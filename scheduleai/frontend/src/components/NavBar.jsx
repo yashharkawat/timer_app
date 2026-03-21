@@ -41,7 +41,7 @@ export default function NavBar() {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-t border-[#e8e2d8] dark:border-gray-700/60">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 dark:bg-[#131720]/95 backdrop-blur-md border-t border-[#e2e8f4] dark:border-[#1e2235]">
       <div className="max-w-lg mx-auto flex justify-around items-center px-2 py-1 pb-safe">
         {links.map(({ to, label, Icon }) => {
           const active = location.pathname === to ||
@@ -52,8 +52,8 @@ export default function NavBar() {
               to={to}
               className={`flex flex-col items-center gap-1 px-6 py-2 rounded-2xl transition-all ${
                 active
-                  ? 'text-[#3d3420] dark:text-amber-400'
-                  : 'text-[#b0a898] dark:text-gray-500 hover:text-[#5a5548] dark:hover:text-gray-300'
+                  ? 'text-[#6366f1] dark:text-[#818cf8]'
+                  : 'text-[#94a3b8] dark:text-[#475569] hover:text-[#6366f1] dark:hover:text-[#818cf8]'
               }`}
             >
               <Icon active={active} />

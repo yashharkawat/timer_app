@@ -72,7 +72,7 @@ export default function Session() {
     setIsSpeaking(false);
     if (soundEnabled) playRestChime(volume);
     startRest();
-    setLocalRunning(true); // run the rest countdown
+    setLocalRunning(true);
   }, [soundEnabled, volume, dayId, startRest]);
 
   const finishSession = useCallback(() => {
@@ -100,7 +100,6 @@ export default function Session() {
 
         if (s.isResting) {
           if (s.restTimeLeft <= 1) {
-            // Rest done — advance to next step
             clearInterval(intervalRef.current);
             const nextIndex = s.currentStepIndex + 1;
             if (d && nextIndex < d.steps.length) {
@@ -184,120 +183,169 @@ export default function Session() {
     };
   }, []);
 
-  if (!day || !step) return <div className="p-8 text-center text-[#9a9486]">Loading...</div>;
+  if (!day || !step) return (
+    <div className="min-h-screen bg-[#f8fafc] dark:bg-[#0c0e16] flex items-center justify-center">
+      <p className="text-[#64748b] dark:text-[#94a3b8]">Loading...</p>
+    </div>
+  );
 
+  // ── DONE SCREEN ──────────────────────────────────────────────────────────────
   if (showDone) {
     const total = day.steps.reduce((a, s) => a + s.durationMinutes, 0);
     return (
-      <div className="max-w-lg mx-auto px-4 pt-16 pb-8 text-center">
-        <div className="text-6xl mb-4">✓</div>
-        <h2 className="text-2xl font-bold text-[#2c2a24] dark:text-gray-100 mb-2">Session complete</h2>
-        <p className="text-[#5a5548] dark:text-gray-300 mb-6">{day.name} — {total} minutes. Well done.</p>
-        <textarea
-          className="w-full border border-[#e0dbd0] dark:border-gray-600 rounded-xl px-4 py-3 text-sm mb-4 bg-white dark:bg-gray-800 dark:text-gray-100 resize-none"
-          rows={3}
-          placeholder="Add a note (optional)"
-          value={doneNote}
-          onChange={e => setDoneNote(e.target.value)}
-        />
-        <button onClick={handleSaveFinish} disabled={saving}
-          className="w-full py-3 bg-[#3d3420] text-white rounded-xl font-semibold disabled:opacity-50 hover:bg-[#2c2412] transition-colors">
-          {saving ? 'Saving...' : 'Save & finish'}
-        </button>
-      </div>
-    );
-  }
-
-  // Rest screen
-  if (session.isResting) {
-    return (
-      <div className="max-w-lg mx-auto px-4 pt-4 pb-8">
-        <div className="flex items-center gap-3 mb-6">
-          <button onClick={() => { setLocalRunning(false); navigate('/schedule'); }} className="text-[#9a9486] hover:text-[#3d3420] text-sm font-medium">← Back</button>
-          <div className="flex-1 text-center text-sm text-[#9a9486] dark:text-gray-400">{day.name}</div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-2xl border border-[#e0dbd0] dark:border-gray-700 p-8 text-center mb-4">
-          <div className="text-4xl mb-3">😮‍💨</div>
-          <h2 className="text-xl font-bold text-[#2c2a24] dark:text-gray-100 mb-1">Rest</h2>
-          <p className="text-sm text-[#9a9486] dark:text-gray-400 mb-6">Next: {day.steps[session.currentStepIndex + 1]?.title || `Exercise ${session.currentStepIndex + 2}`}</p>
-          <div className="text-5xl font-bold text-[#8b7355] mb-6">{session.restTimeLeft}s</div>
+      <div className="min-h-screen bg-[#f8fafc] dark:bg-[#0c0e16] flex flex-col">
+        <div className="max-w-lg mx-auto w-full px-4 pt-16 pb-8 flex flex-col items-center text-center flex-1">
+          {/* Indigo checkmark circle */}
+          <div className="w-20 h-20 bg-[#6366f1] rounded-full flex items-center justify-center mb-6 shadow-lg">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-[#0f172a] dark:text-[#f1f5f9] mb-2">Session complete</h2>
+          <p className="text-[#64748b] dark:text-[#94a3b8] mb-8">{day.name} — {total} minutes. Well done.</p>
+          <textarea
+            className="w-full border border-[#e2e8f4] dark:border-[#1e2235] rounded-xl px-4 py-3 text-sm mb-5 bg-white dark:bg-[#131720] text-[#0f172a] dark:text-[#f1f5f9] placeholder-[#94a3b8] resize-none focus:outline-none focus:border-[#6366f1]"
+            rows={3}
+            placeholder="Add a note (optional)"
+            value={doneNote}
+            onChange={e => setDoneNote(e.target.value)}
+          />
           <button
-            onClick={() => {
-              goToStep(session.currentStepIndex + 1, true);
-            }}
-            className="w-full py-3 bg-[#f0ece4] dark:bg-gray-700 text-[#5a5548] dark:text-gray-300 rounded-xl font-semibold text-sm hover:bg-[#e4dfd4] transition-all"
+            onClick={handleSaveFinish}
+            disabled={saving}
+            className="w-full py-3.5 bg-[#6366f1] hover:bg-[#4f46e5] text-white rounded-xl font-semibold text-base disabled:opacity-50 active:scale-[0.98] transition-all shadow-sm"
           >
-            Skip rest →
+            {saving ? 'Saving...' : 'Save & finish'}
           </button>
         </div>
       </div>
     );
   }
 
+  // ── REST SCREEN ──────────────────────────────────────────────────────────────
+  if (session.isResting) {
+    const nextStep = day.steps[session.currentStepIndex + 1];
+    return (
+      <div className="min-h-screen bg-[#f8fafc] dark:bg-[#0c0e16]">
+        <div className="max-w-lg mx-auto px-4 pt-4 pb-8">
+          <div className="flex items-center gap-3 mb-6">
+            <button
+              onClick={() => { setLocalRunning(false); navigate('/schedule'); }}
+              className="flex items-center gap-1.5 text-[#64748b] hover:text-[#0f172a] dark:hover:text-[#f1f5f9] text-sm font-medium transition-colors"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              Back
+            </button>
+            <div className="flex-1 text-center text-sm text-[#64748b] dark:text-[#94a3b8]">{day.name}</div>
+          </div>
+
+          <div className="bg-white dark:bg-[#131720] rounded-2xl border border-[#e2e8f4] dark:border-[#1e2235] p-8 text-center">
+            <p className="text-xs font-semibold text-[#64748b] dark:text-[#94a3b8] uppercase tracking-wider mb-3">Rest</p>
+            <div className="text-6xl font-bold text-[#6366f1] mb-4">{session.restTimeLeft}s</div>
+            {nextStep && (
+              <div className="bg-[#f8fafc] dark:bg-[#0c0e16] rounded-xl px-4 py-3 mb-6">
+                <p className="text-xs text-[#64748b] dark:text-[#94a3b8] mb-1">Up next</p>
+                <p className="text-sm font-semibold text-[#0f172a] dark:text-[#f1f5f9]">{nextStep.title || `Exercise ${session.currentStepIndex + 2}`}</p>
+                <p className="text-xs text-[#64748b] dark:text-[#94a3b8] mt-0.5">{nextStep.durationMinutes} min</p>
+              </div>
+            )}
+            <button
+              onClick={() => goToStep(session.currentStepIndex + 1, true)}
+              className="w-full py-3.5 bg-[#f1f5f9] dark:bg-[#1e2235] text-[#64748b] dark:text-[#94a3b8] rounded-xl font-semibold text-sm hover:bg-[#eef2ff] dark:hover:bg-[#1e2040] hover:text-[#6366f1] dark:hover:text-[#818cf8] transition-all active:scale-[0.98]"
+            >
+              Skip rest
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── MAIN SESSION SCREEN ──────────────────────────────────────────────────────
   const progressPct = (session.currentStepIndex / day.steps.length) * 100;
 
   return (
-    <div className="max-w-lg mx-auto px-4 pt-4 pb-8">
-      <div className="flex items-center gap-3 mb-3">
-        <button onClick={() => { stopSpeech(); setLocalRunning(false); navigate('/schedule'); }} className="text-[#9a9486] hover:text-[#3d3420] dark:text-gray-400 text-sm font-medium">← Back</button>
-        <div className="flex-1 text-center text-sm text-[#9a9486] dark:text-gray-400 font-medium">
-          {day.name} · {session.currentStepIndex + 1}/{day.steps.length}
+    <div className="min-h-screen bg-[#f8fafc] dark:bg-[#0c0e16]">
+      <div className="max-w-lg mx-auto px-4 pt-4 pb-8">
+        <div className="flex items-center gap-3 mb-3">
+          <button
+            onClick={() => { stopSpeech(); setLocalRunning(false); navigate('/schedule'); }}
+            className="flex items-center gap-1.5 text-[#64748b] hover:text-[#0f172a] dark:hover:text-[#f1f5f9] text-sm font-medium transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+            Back
+          </button>
+          <div className="flex-1 text-center text-sm text-[#64748b] dark:text-[#94a3b8] font-medium">
+            {day.name} · {session.currentStepIndex + 1}/{day.steps.length}
+          </div>
         </div>
-      </div>
 
-      <div className="h-1 bg-[#e8e3d8] dark:bg-gray-700 rounded-full mb-4 overflow-hidden">
-        <div className="h-full bg-[#8b7355] rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }} />
-      </div>
-
-      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-[#e0dbd0] dark:border-gray-700 overflow-hidden mb-4">
-        <div className="p-5 relative">
-          <StepCard
-            step={step}
-            stepNum={session.currentStepIndex + 1}
-            totalSteps={day.steps.length}
-            dayName={day.name}
-            isSpeaking={isSpeaking}
-            onListen={() => {
-              if (getIsSpeaking()) { stopSpeech(); setIsSpeaking(false); }
-              else speakStep(step);
-            }}
+        <div className="h-1.5 bg-[#e2e8f4] dark:bg-[#1e2235] rounded-full mb-4 overflow-hidden">
+          <div
+            className="h-full bg-[#6366f1] rounded-full transition-all duration-500"
+            style={{ width: `${progressPct}%` }}
           />
         </div>
-        <div className="border-t border-[#f0ece4] dark:border-gray-700 p-5">
-          <TimerRing timeLeft={session.timeLeft} totalTime={session.totalTime} stepType="active" />
-          <div className="text-center text-sm text-[#9a9486] dark:text-gray-400 mt-2 mb-4">
-            {step.durationMinutes} min
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => goToStep(session.currentStepIndex - 1)}
-              disabled={session.currentStepIndex === 0}
-              className="flex-1 py-3 bg-[#f0ece4] dark:bg-gray-700 text-[#5a5548] dark:text-gray-300 rounded-xl font-semibold text-sm disabled:opacity-40 hover:bg-[#e4dfd4] transition-all active:scale-95"
-            >
-              ← Back
-            </button>
-            <button
-              onClick={toggleTimer}
-              className="flex-1 py-3 bg-[#3d3420] text-white rounded-xl font-semibold text-sm hover:bg-[#2c2412] transition-all active:scale-95"
-            >
-              {localRunning ? 'Pause' : session.timeLeft < session.totalTime ? 'Resume' : 'Start'}
-            </button>
-            <button
-              onClick={() => {
-                const d = useStore.getState().schedule?.days?.find(dd => dd.id === dayId);
-                if (session.currentStepIndex < (d?.steps.length ?? 0) - 1) goToStep(session.currentStepIndex + 1);
-                else finishSession();
+
+        <div className="bg-white dark:bg-[#131720] rounded-2xl border border-[#e2e8f4] dark:border-[#1e2235] overflow-hidden mb-4">
+          <div className="p-5 relative">
+            <StepCard
+              step={step}
+              stepNum={session.currentStepIndex + 1}
+              totalSteps={day.steps.length}
+              dayName={day.name}
+              isSpeaking={isSpeaking}
+              onListen={() => {
+                if (getIsSpeaking()) { stopSpeech(); setIsSpeaking(false); }
+                else speakStep(step);
               }}
-              className="flex-1 py-3 bg-[#f8f5ef] dark:bg-gray-700 text-[#9a9486] dark:text-gray-400 border border-[#e0dbd0] dark:border-gray-600 rounded-xl font-semibold text-sm hover:bg-[#f0ece4] transition-all active:scale-95"
-            >
-              Skip →
-            </button>
+            />
+          </div>
+          <div className="border-t border-[#e2e8f4] dark:border-[#1e2235] p-5">
+            <TimerRing timeLeft={session.timeLeft} totalTime={session.totalTime} stepType="active" />
+            <div className="text-center text-sm text-[#64748b] dark:text-[#94a3b8] mt-2 mb-4">
+              {step.durationMinutes} min
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => goToStep(session.currentStepIndex - 1)}
+                disabled={session.currentStepIndex === 0}
+                className="flex-1 py-3.5 bg-[#f1f5f9] dark:bg-[#1e2235] text-[#64748b] dark:text-[#94a3b8] rounded-xl font-semibold text-sm disabled:opacity-40 hover:bg-[#eef2ff] dark:hover:bg-[#1e2040] hover:text-[#6366f1] dark:hover:text-[#818cf8] transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6"/>
+                </svg>
+                Back
+              </button>
+              <button
+                onClick={toggleTimer}
+                className="flex-1 py-3.5 bg-[#6366f1] hover:bg-[#4f46e5] text-white rounded-xl font-semibold text-sm transition-all active:scale-95"
+              >
+                {localRunning ? 'Pause' : session.timeLeft < session.totalTime ? 'Resume' : 'Start'}
+              </button>
+              <button
+                onClick={() => {
+                  const d = useStore.getState().schedule?.days?.find(dd => dd.id === dayId);
+                  if (session.currentStepIndex < (d?.steps.length ?? 0) - 1) goToStep(session.currentStepIndex + 1);
+                  else finishSession();
+                }}
+                className="flex-1 py-3.5 bg-[#f1f5f9] dark:bg-[#1e2235] text-[#64748b] dark:text-[#94a3b8] rounded-xl font-semibold text-sm hover:bg-[#eef2ff] dark:hover:bg-[#1e2040] hover:text-[#6366f1] dark:hover:text-[#818cf8] transition-all active:scale-95 flex items-center justify-center gap-1.5"
+              >
+                Skip
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <StepList steps={day.steps} currentIndex={session.currentStepIndex} onJump={goToStep} />
+        <StepList steps={day.steps} currentIndex={session.currentStepIndex} onJump={goToStep} />
+      </div>
     </div>
   );
 }

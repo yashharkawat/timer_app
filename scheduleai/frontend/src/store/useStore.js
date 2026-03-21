@@ -20,6 +20,7 @@ const useStore = create(
         soundVolume: 0.8,
         theme: 'light',
         keepScreenOn: true,
+        keepAlive: false,
       },
       log: [],
       streak: 0,

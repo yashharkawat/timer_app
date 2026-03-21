@@ -12,7 +12,7 @@ import ImportSchedule from './pages/ImportSchedule.jsx';
 
 function AuthGuard({ children }) {
   const { isSignedIn, isLoaded } = useAuth();
-  if (!isLoaded) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-[#8b7355] border-t-transparent rounded-full animate-spin" /></div>;
+  if (!isLoaded) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-[#6366f1] border-t-transparent rounded-full animate-spin" /></div>;
   if (!isSignedIn) return <Navigate to="/sign-in" replace />;
   return children;
 }
@@ -36,6 +36,16 @@ export default function App() {
     }
   }, [isSignedIn, isLoaded]);
 
+  // Keep-alive ping for Render free tier (pings /health every 8 min when enabled)
+  useEffect(() => {
+    if (!settings.keepAlive) return;
+    const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    const id = setInterval(() => {
+      fetch(`${BASE}/health`).catch(() => {});
+    }, 8 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [settings.keepAlive]);
+
   // Dark mode
   useEffect(() => {
     if (settings.theme === 'dark') {
@@ -47,7 +57,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-[#f4f1eb] dark:bg-gray-900 text-[#2c2a24] dark:text-gray-100">
+      <div className="min-h-screen bg-[#f8fafc] dark:bg-[#0c0e16] text-[#0f172a] dark:text-[#f1f5f9]">
         <Routes>
           <Route path="/sign-in/*" element={<div className="min-h-screen flex items-center justify-center p-4"><SignIn routing="path" path="/sign-in" afterSignInUrl="/" /></div>} />
           <Route path="/sign-up/*" element={<div className="min-h-screen flex items-center justify-center p-4"><SignUp routing="path" path="/sign-up" afterSignUpUrl="/" /></div>} />
