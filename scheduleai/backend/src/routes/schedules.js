@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
+import { parseScheduleFromText, getProvider } from '../lib/ai/index.js';
 
 const router = Router();
 
@@ -153,6 +154,70 @@ router.post('/import', requireAuth, async (req, res, next) => {
               create: (day.steps || []).map((step, si) => ({
                 title: step.title,
                 durationMinutes: step.durationMinutes,
+                instructions: step.instructions || null,
+                sortOrder: si,
+              })),
+            },
+          })),
+        },
+      },
+      include: {
+        days: {
+          orderBy: { sortOrder: 'asc' },
+          include: { steps: { orderBy: { sortOrder: 'asc' } } },
+        },
+      },
+    });
+
+    res.status(201).json(schedule);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/schedules/ai-provider — tells frontend which provider is active
+router.get('/ai-provider', requireAuth, (req, res) => {
+  const provider = getProvider();
+  res.json({ provider: provider || null });
+});
+
+// POST /api/schedules/import-ai
+// Body: { text: "raw document text" }
+router.post('/import-ai', requireAuth, async (req, res, next) => {
+  try {
+    const { text } = req.body;
+    if (!text || text.trim().length < 20) {
+      return res.status(400).json({ error: 'Document text too short or missing' });
+    }
+
+    const parsed = await parseScheduleFromText(text);
+    const { title, description, restSeconds, days } = parsed;
+
+    if (!title || !Array.isArray(days) || days.length === 0) {
+      return res.status(422).json({ error: 'AI could not extract a valid schedule from this document' });
+    }
+
+    // Deactivate existing schedules
+    await req.prisma.schedule.updateMany({
+      where: { userId: req.user.id },
+      data: { isActive: false },
+    });
+
+    const schedule = await req.prisma.schedule.create({
+      data: {
+        userId: req.user.id,
+        title,
+        description: description || null,
+        restSeconds: Number(restSeconds) || 30,
+        isActive: true,
+        days: {
+          create: days.map((day, di) => ({
+            name: day.name,
+            sortOrder: di,
+            steps: {
+              create: (day.steps || []).map((step, si) => ({
+                title: step.title,
+                durationMinutes: Number(step.durationMinutes) || 1,
                 instructions: step.instructions || null,
                 sortOrder: si,
               })),
