@@ -18,7 +18,7 @@ const useStore = create(
         voiceAutoRead: true,
         soundsEnabled: true,
         soundVolume: 0.8,
-        theme: 'light',
+        theme: 'dark',
         keepScreenOn: true,
         keepAlive: false,
       },
