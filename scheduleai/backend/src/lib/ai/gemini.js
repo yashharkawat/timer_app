@@ -23,7 +23,14 @@ export async function parseSchedule(text) {
   }
 
   const data = await res.json();
-  const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!content) throw new Error('Empty response from Gemini');
-  return JSON.parse(content);
+  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!raw) throw new Error('Empty response from Gemini');
+
+  // Strip markdown code blocks if present (```json ... ``` or ``` ... ```)
+  const content = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
+
+  // Extract first JSON object in case there's surrounding text
+  const match = content.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('No JSON found in Gemini response');
+  return JSON.parse(match[0]);
 }
