@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  clerkId      String        @unique
+  email        String        @unique
+  name         String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  schedules    Schedule[]
+  sessionLogs  SessionLog[]
+  settings     UserSettings?
+  pushSubs     PushSubscription[]
+}
+
+model Schedule {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  restSeconds Int      @default(30)
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  days        Day[]
+}
+
+model Day {
+  id         String   @id @default(cuid())
+  scheduleId String
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  name       String
+  sortOrder  Int      @default(0)
+  steps      Step[]
+  sessionLogs SessionLog[]
+}
+
+model Step {
+  id              String  @id @default(cuid())
+  dayId           String
+  day             Day     @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  title           String
+  durationMinutes Int
+  instructions    String?
+  sortOrder       Int     @default(0)
+}
+
+model SessionLog {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayId           String
+  day             Day      @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  completedSteps  Int
+  totalSteps      Int
+  durationMinutes Int
+  notes           String?
+  completedAt     DateTime @default(now())
+}
+
+model UserSettings {
+  id             String  @id @default(cuid())
+  userId         String  @unique
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifEnabled   Boolean @default(false)
+  notifTime      String  @default("08:00")
+  notifDays      Json    @default("[\"mon\",\"tue\",\"wed\",\"thu\",\"fri\",\"sat\",\"sun\"]")
+  notifMessage   String  @default("Time for your eye exercises 👁")
+  voiceEnabled   Boolean @default(true)
+  voiceName      String  @default("")
+  voiceRate      Float   @default(0.92)
+  voicePitch     Float   @default(1.0)
+  voiceAutoRead  Boolean @default(true)
+  soundsEnabled  Boolean @default(true)
+  soundVolume    Float   @default(0.8)
+  theme          String  @default("light")
+  keepScreenOn   Boolean @default(true)
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+}

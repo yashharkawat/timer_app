@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bates Method Session Timer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f4f1eb; min-height: 100vh; color: #2c2a24; }
+
+  .app { max-width: 480px; margin: 0 auto; padding: 16px; }
+
+  /* DAY SELECTOR */
+  .day-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
+  .day-btn { background: #fff; border: 1.5px solid #d4cfc4; border-radius: 10px; padding: 10px 6px; text-align: center; cursor: pointer; transition: all .15s; }
+  .day-btn:hover { border-color: #8b7355; background: #faf7f2; }
+  .day-btn.active { background: #3d3420; border-color: #3d3420; color: #fff; }
+  .day-btn .day-name { font-size: 13px; font-weight: 600; }
+  .day-btn .day-sub { font-size: 10px; opacity: .65; margin-top: 2px; }
+
+  /* SESSION CARD */
+  .session-card { background: #fff; border-radius: 16px; border: 1px solid #e0dbd0; overflow: hidden; margin-bottom: 16px; }
+
+  /* PROGRESS BAR */
+  .progress-bar-wrap { height: 4px; background: #e8e3d8; }
+  .progress-bar { height: 100%; background: #8b7355; transition: width .4s ease; }
+
+  /* STEP INFO */
+  .step-counter { font-size: 11px; color: #9a9486; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 6px; }
+  .step-title { font-size: 20px; font-weight: 700; color: #2c2a24; line-height: 1.3; margin-bottom: 8px; }
+  .step-desc { font-size: 14px; color: #5a5548; line-height: 1.6; }
+  .step-source { font-size: 11px; color: #b0a898; margin-top: 10px; font-style: italic; }
+
+  /* TIMER */
+  .timer-section { padding: 16px 20px 20px; border-top: 1px solid #f0ece4; }
+  .timer-display { text-align: center; margin-bottom: 16px; }
+  .timer-ring { position: relative; width: 120px; height: 120px; margin: 0 auto 10px; }
+  .timer-ring svg { transform: rotate(-90deg); }
+  .timer-ring .bg { fill: none; stroke: #f0ece4; stroke-width: 6; }
+  .timer-ring .fg { fill: none; stroke: #8b7355; stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset .9s linear; }
+  .timer-ring.rest .fg { stroke: #5a8a6e; }
+  .timer-ring.urgent .fg { stroke: #b85c38; }
+  .timer-time { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 26px; font-weight: 700; color: #2c2a24; letter-spacing: -.02em; }
+  .timer-label { font-size: 12px; color: #9a9486; text-align: center; margin-bottom: 14px; }
+
+  /* CONTROLS */
+  .controls { display: flex; gap: 10px; }
+  .btn { flex: 1; padding: 12px; border-radius: 10px; border: none; font-size: 15px; font-weight: 600; cursor: pointer; transition: all .15s; }
+  .btn:active { transform: scale(.97); }
+  .btn-primary { background: #3d3420; color: #fff; }
+  .btn-primary:hover { background: #2c2412; }
+  .btn-secondary { background: #f0ece4; color: #5a5548; }
+  .btn-secondary:hover { background: #e4dfd4; }
+  .btn-skip { background: #f8f5ef; color: #9a9486; border: 1px solid #e0dbd0; }
+  .btn-skip:hover { background: #f0ece4; }
+
+  /* STEP LIST */
+  .step-list { background: #fff; border-radius: 16px; border: 1px solid #e0dbd0; overflow: hidden; }
+  .step-list-header { padding: 14px 16px; font-size: 12px; font-weight: 600; color: #9a9486; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid #f0ece4; }
+  .step-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #f7f4ef; cursor: pointer; transition: background .1s; }
+  .step-item:last-child { border-bottom: none; }
+  .step-item:hover { background: #faf7f2; }
+  .step-item.current { background: #fdf9f2; border-left: 3px solid #8b7355; }
+  .step-item.done { opacity: .45; }
+  .step-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; background: #f0ece4; color: #9a9486; }
+  .step-item.done .step-dot { background: #d4ead9; color: #5a8a6e; }
+  .step-item.current .step-dot { background: #3d3420; color: #fff; }
+  .step-item-text { flex: 1; }
+  .step-item-name { font-size: 14px; font-weight: 500; color: #2c2a24; }
+  .step-item-dur { font-size: 12px; color: #9a9486; margin-top: 1px; }
+
+  /* DONE STATE */
+  .done-screen { text-align: center; padding: 40px 20px; }
+  .done-icon { font-size: 48px; margin-bottom: 16px; }
+  .done-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+  .done-sub { font-size: 15px; color: #5a5548; line-height: 1.6; }
+
+  /* HEADER */
+  .header { text-align: center; padding: 20px 0 16px; }
+  .header h1 { font-size: 18px; font-weight: 700; color: #2c2a24; }
+  .header p { font-size: 13px; color: #9a9486; margin-top: 4px; }
+
+  .tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px; text-transform: uppercase; letter-spacing: .04em; margin-left: 6px; vertical-align: middle; }
+  .tag-rest { background: #d4ead9; color: #3a6b4a; }
+  .tag-active { background: #e8dfc8; color: #7a5e2a; }
+  .tag-night { background: #ddd4ea; color: #5a3a7a; }
+
+  .hidden { display: none; }
+  .notif-bar { background: #3d3420; color: #fff; text-align: center; padding: 10px; font-size: 13px; border-radius: 10px; margin-bottom: 12px; display: none; }
+  .sound-row { display: flex; align-items: center; justify-content: space-between; background: #fff; border: 1px solid #e0dbd0; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; color: #5a5548; }
+  .sound-row span { font-weight: 500; }
+  .sound-toggle { display: flex; gap: 6px; }
+  .sound-opt { padding: 5px 12px; border-radius: 20px; border: 1px solid #d4cfc4; background: #f8f5ef; font-size: 12px; font-weight: 600; cursor: pointer; color: #5a5548; transition: all .15s; }
+  .sound-opt.on { background: #3d3420; color: #fff; border-color: #3d3420; }
+  .voice-row { background: #fff; border: 1px solid #e0dbd0; border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; color: #5a5548; }
+  .voice-row-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0; }
+  .voice-row-top.open { margin-bottom: 10px; }
+  .voice-controls { display: none; padding-top: 8px; border-top: 1px solid #f0ece4; }
+  .voice-controls.open { display: block; }
+  .voice-label { font-size: 11px; color: #9a9486; margin-bottom: 4px; }
+  .voice-select { width: 100%; padding: 6px 8px; border: 1px solid #d4cfc4; border-radius: 8px; font-size: 13px; background: #faf7f2; margin-bottom: 8px; }
+  .voice-slider-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .voice-slider-row label { font-size: 12px; color: #9a9486; width: 50px; flex-shrink: 0; }
+  .voice-slider-row input { flex: 1; }
+  .voice-slider-row span { font-size: 12px; color: #5a5548; width: 32px; text-align: right; }
+  .speak-btn { position: absolute; right: 20px; top: 20px; background: #f0ece4; border: 1px solid #d4cfc4; border-radius: 8px; padding: 5px 10px; font-size: 12px; cursor: pointer; color: #5a5548; transition: all .15s; display: flex; align-items: center; gap: 4px; }
+  .speak-btn:hover { background: #e4dfd4; }
+  .speak-btn.speaking { background: #3d3420; color: #fff; border-color: #3d3420; }
+  .step-info { padding: 20px 20px 12px; position: relative; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1>Bates Method Timer</h1>
+    <p>Guided eye exercise sessions</p>
+  </div>
+
+  <div id="notif-bar" class="notif-bar"></div>
+  <div class="sound-row" id="sound-row">
+    <span>&#9834; Sounds</span>
+    <div class="sound-toggle">
+      <div class="sound-opt on" id="snd-on" onclick="setSoundOn(true)">On</div>
+      <div class="sound-opt" id="snd-off" onclick="setSoundOn(false)">Off</div>
+    </div>
+  </div>
+  <div class="voice-row" id="voice-row">
+    <div class="voice-row-top" id="voice-row-top">
+      <span>&#127908; Voice instructions</span>
+      <div class="sound-toggle">
+        <div class="sound-opt on" id="voice-on" onclick="setVoiceOn(true)">On</div>
+        <div class="sound-opt" id="voice-off" onclick="setVoiceOn(false)">Off</div>
+        <div class="sound-opt" id="voice-settings-btn" onclick="toggleVoiceSettings()" style="margin-left:4px;">&#9881;</div>
+      </div>
+    </div>
+    <div class="voice-controls" id="voice-controls">
+      <div class="voice-label">Voice</div>
+      <select class="voice-select" id="voice-select" onchange="selectedVoice=this.value"></select>
+      <div class="voice-slider-row">
+        <label>Speed</label>
+        <input type="range" id="rate-slider" min="0.6" max="1.4" step="0.05" value="0.92" oninput="speechRate=+this.value;document.getElementById('rate-val').textContent=this.value">
+        <span id="rate-val">0.92</span>
+      </div>
+      <div class="voice-slider-row">
+        <label>Pitch</label>
+        <input type="range" id="pitch-slider" min="0.7" max="1.3" step="0.05" value="1.0" oninput="speechPitch=+this.value;document.getElementById('pitch-val').textContent=this.value">
+        <span id="pitch-val">1.0</span>
+      </div>
+      <button class="btn btn-secondary" style="width:100%;padding:8px;font-size:13px;margin-top:4px;" onclick="testVoice()">&#9654; Test voice</button>
+    </div>
+  </div>
+
+  <!-- DAY SELECTOR -->
+  <div id="day-selector">
+    <div class="day-grid" id="day-grid"></div>
+  </div>
+
+  <!-- SESSION PLAYER -->
+  <div id="session-player" class="hidden">
+    <div class="session-card">
+      <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+      <div class="step-info">
+        <div class="step-counter" id="step-counter"></div>
+        <div class="step-title" id="step-title"></div>
+        <div class="step-desc" id="step-desc"></div>
+        <div class="step-source" id="step-source"></div>
+        <button class="speak-btn" id="speak-btn" onclick="toggleSpeak()">&#9654; Listen</button>
+      </div>
+      <div class="timer-section">
+        <div class="timer-display">
+          <div class="timer-ring" id="timer-ring">
+            <svg width="120" height="120" viewBox="0 0 120 120">
+              <circle class="bg" cx="60" cy="60" r="52"/>
+              <circle class="fg" id="timer-circle" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="0"/>
+            </svg>
+            <div class="timer-time" id="timer-time">0:00</div>
+          </div>
+          <div class="timer-label" id="timer-label"></div>
+        </div>
+        <div class="controls">
+          <button class="btn btn-secondary" id="btn-back" onclick="prevStep()">&#8592; Back</button>
+          <button class="btn btn-primary" id="btn-start" onclick="toggleTimer()">Start</button>
+          <button class="btn btn-skip" onclick="nextStep()">Skip &#8594;</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="step-list">
+      <div class="step-list-header">Session steps</div>
+      <div id="step-list-body"></div>
+    </div>
+
+    <div style="margin-top: 12px; text-align: center;">
+      <button class="btn btn-secondary" style="width: 100%; max-width: 200px;" onclick="resetToSelector()">&#8592; Change day</button>
+    </div>
+  </div>
+
+  <!-- DONE SCREEN -->
+  <div id="done-screen" class="hidden done-screen">
+    <div class="done-icon">&#10003;</div>
+    <div class="done-title">Session complete</div>
+    <div class="done-sub" id="done-message"></div>
+    <br>
+    <button class="btn btn-primary" style="max-width: 200px; margin: 0 auto; display: block;" onclick="resetToSelector()">Back to days</button>
+  </div>
+</div>
+
+<script>
+const CIRCUMFERENCE = 2 * Math.PI * 52;
+
+const DAYS = [
+  {
+    name: "Monday", sub: "Foundation", color: "#3d3420",
+    theme: "Foundation Day — Reset & Baseline",
+    steps: [
+      { title: "Deep breathing", dur: 5, type: "active", desc: "Separate your teeth, keep lips closed. Breathe in slowly as if yawning — feel cool air pass through your nose and down the throat. Do 5–10 slow breaths. Let your eyes and face relax completely.", source: "Jan 1923 (Breathing)" },
+      { title: "Dream scene palming", dur: 10, type: "rest", desc: "Cover your closed eyes with warm palms, excluding all light. Recall this morning's dream. Add light to dark scenes gently — like sunrise. Find any horizontal element in the dream (a floor, a road, a horizon) and imagine it sharp and black with a gentle swing. If no dream remembered, imagine a small black dot and let it flash and swing.", source: "Dec 1919 (Imagination Cure), May 1921 (Imagination Essential)" },
+      { title: "Snellen card — central fixation", dur: 10, type: "active", desc: "Place your Snellen chart at 10–20 feet. Find the smallest line you can partially read. Look at ONE letter — see the top best, the bottom slightly less distinct. Then reverse. Choose letters with horizontal bars: E, F, H, T. Notice if horizontal bars are less distinct than vertical ones — that is your training target. Flash: close, remember the letter perfectly black, open for 1 second. Repeat.", source: "Jul 1919 (Central Fixation), Dec 1919 (Home Treatment)" },
+      { title: "Horizontal line swing", dur: 10, type: "active", desc: "Find a letter with strong horizontal element: E, F, T, H. Palm 2 min — imagine the horizontal bar perfectly sharp and black. Open eyes, glance for 1 second — is the horizontal bar as clear as the vertical stroke? Close again. Repeat 10 times, gradually increasing open-eye time. Do NOT stare. Shift constantly.", source: "Sep 1919 (Flashing Cure), Jan 1923 (Astigmatism)" },
+      { title: "Closing palm", dur: 5, type: "rest", desc: "Palm. Imagine a perfectly sharp horizon — a dark line against a lighter sky, moving gently left and right like a slow pendulum. If the image fades, don't force it. Let it return on its own. End in deep, uniform black.", source: "Oct 1919 (Swinging Cure), Jan 1920 (Palming Cure)" },
+      { title: "Log your session", dur: 5, type: "active", desc: "Write today's entry: What was the clearest horizontal thing you saw? Did the shadow reduce during any exercise? Rate your shadow gap 1–5. Note your best moment: 'Today I had a flash of clean vision when I ___.' This daily log is your real progress record.", source: "Dec 1919 (Home Treatment)" },
+    ]
+  },
+  {
+    name: "Tuesday", sub: "Swing + Night", color: "#3d3420",
+    theme: "Swing Day — Release Muscle Tension",
+    steps: [
+      { title: "Deep breathing", dur: 5, type: "active", desc: "Separate teeth, lips closed. Breathe in slowly as if yawning — feel cool air through nose and throat. 5–10 breaths. Let all facial and eye tension drain away with each exhale.", source: "Jan 1923 (Breathing)" },
+      { title: "Palming", dur: 5, type: "rest", desc: "Cover closed eyes with warm palms, excluding all light. Aim for deep, uniform black. Do not try — just rest. The blacker the black you can hold, the more complete the relaxation.", source: "Jan 1920 (Palming Cure)" },
+      { title: "Short swing practice", dur: 15, type: "active", desc: "Rub your thumb and index finger together slowly — a quarter-inch side to side. Let your eyes follow this tiny movement (shifting, not staring). Now imagine your body gently swaying opposite to the finger — finger goes right, you sway left. Do this for 3–5 min. Then apply to the Snellen card or a horizontal wire outside. Test: are horizontal wires sharper after swinging?", source: "Oct 1919 (Swinging Cure), Jan 1923 (Astigmatism — Short Swing)" },
+      { title: "Test horizontal wires", dur: 5, type: "active", desc: "Look at overhead wires, a power line, or any horizontal edge at distance. Note: is there a shadow? How far is it from the main line? Is it darker or lighter than usual? Compare to yesterday. Then do 1 min of short swing and look again. Notice any change.", source: "Jan 1923 (Astigmatism)" },
+      { title: "EVENING — Night central fixation", dur: 7, type: "night", desc: "In a dim room with only ambient light: find an object you cannot see when looking directly at it (like the fan in darkness). Do NOT try to see it directly. Rest your gaze slightly to one side where you CAN see it in periphery. Very slowly shift gaze in tiny increments toward it. Stop the moment it starts to fade. Hold. Breathe. The goal is to reduce the avoidance distance by one small step — not to see it directly tonight.", source: "Jul 1919 (Central Fixation — eccentric fixation), Sep 1919 (Doctor's Story)" },
+    ]
+  },
+  {
+    name: "Wednesday", sub: "Imagination", color: "#3d3420",
+    theme: "Imagination Day — Mental Layer Work",
+    steps: [
+      { title: "Deep breathing", dur: 5, type: "active", desc: "Separate teeth, lips closed. Breathe slowly as if yawning — feel cool air through nose and throat. 5–10 breaths. Relax the forehead, eyes, jaw, shoulders.", source: "Jan 1923 (Breathing)" },
+      { title: "Dream scene palming", dur: 10, type: "rest", desc: "Palm. Recall this morning's dream. Let the scene come back without forcing it. What colour was something? What was the light like? If dark, imagine sunrise slowly adding light — gently, not forcefully. Find a horizontal element — a floor, a road, a horizon — and imagine it sharp and black with a gentle swing. The effortless quality you feel here is what you are training to access while awake.", source: "Dec 1919 (Imagination Cure), May 1921 (Imagination Essential)" },
+      { title: "Black period practice", dur: 10, type: "rest", desc: "Palm. Think of a specific familiar black object — a black car, black clothing, a black bird. Shrink it until only a tiny dot remains — the size of a full stop. Let the dot flash and disappear. Do NOT try to hold it. When it disappears, wait — it will return on its own. After a few minutes, let the dot swing gently left and right. Then open eyes. The period on a page will often look blacker immediately.", source: "Dec 1919 (Imagination Cure), Sep 1919 (Cured in 15 Minutes)" },
+      { title: "Flashing on horizontal lines", dur: 10, type: "active", desc: "Find a horizontal line — a shelf edge, a power line, a line of text. Close eyes. Rest. Open for exactly 1 second — observe the line without effort. Close immediately. Repeat 10–12 times, gradually extending open-eye time. Notice: is there a shadow? How dark is it? Palm for 1 min between rounds if the shadow increases.", source: "Sep 1919 (Flashing Cure), Dec 1919 (Imagination Cure)" },
+      { title: "Finger tracing — letter E", dur: 10, type: "active", desc: "Close eyes. Trace the letter E slowly in the air with your finger. As you trace each horizontal bar, imagine it perfectly black — blacker than the vertical stroke. Trace it several times until the horizontal bars feel as real and black as the vertical ones. Now open your eyes and look at a real letter E. Compare. Is there a difference? Close and trace again, then look again.", source: "Nov 1926 (Finger tracing method)" },
+      { title: "Evening — pre-sleep practice", dur: 10, type: "night", desc: "Tonight at bedtime: lie down, close your eyes lightly. Let any image come — do not direct it. When an image appears, notice its detail, colour, and sharpness with relaxed interest. Look for any horizontal element in it. Notice how sharp it is in this relaxed state. Tomorrow morning, try to recall that image during palming. The goal is to bridge the gap between your effortless night imagination and daytime practice.", source: "May 1921 (Imagination), Oct 1921 (Mental Pictures)" },
+      { title: "Palming to close", dur: 5, type: "rest", desc: "Palm. Let the session settle. Do not review or analyse. Just rest in darkness. End in the deepest black you can find without effort.", source: "Jan 1920 (Palming Cure)" },
+    ]
+  },
+  {
+    name: "Thursday", sub: "Outdoor + Night", color: "#3d3420",
+    theme: "Outdoor Day — Apply in Nature",
+    steps: [
+      { title: "Deep breathing outdoors", dur: 5, type: "active", desc: "Stand outside or by an open window. Separate teeth, lips closed. Breathe slowly as if yawning — feel cool outdoor air through nose and throat. Let your eyes rest on a distant soft scene without trying to see anything in particular. Blink naturally.", source: "Jan 1923 (Breathing)" },
+      { title: "Optimum bridge", dur: 10, type: "active", desc: "Find a tall tree or vertical pole — your optimum. Look at it. Notice how sharp and black it appears. Palm for 1 minute and hold that sharp memory. Now shift your gaze to a horizontal fence, power line, or roofline. Try to carry the same relaxed quality from the vertical (easy) to the horizontal (training). If the horizontal blurs or shows shadow, return to the vertical, relax, and try again without effort.", source: "Dec 1919 (Optimums & Pessimums)" },
+      { title: "Near-Far horizontal parallax", dur: 10, type: "active", desc: "Find a scene with horizontal objects at two different depths — a near horizontal rod, wire, or railing, with another horizontal element further behind it. Gaze loosely on the near object — do NOT stare, keep blinking. Move your head slowly up and down. The near object should move OPPOSITE to your head. The far object should move WITH your head. Do not try to see clearly — just watch the movement with relaxed interest. After 3–5 min the near object will likely become blacker and more solid. When it does, shift gaze to the far element. Does it also look sharper?", source: "Dec 1919 (Shifting & Swinging), Jul 1920 (See Things Moving)" },
+      { title: "Pencil / fence tracing", dur: 10, type: "active", desc: "Find any horizontal edge — a fence top, a wall ledge, a window frame, a tile line. Trace along it slowly with your eyes, left to right then right to left. Do not stare at any point — keep shifting. Notice where the line looks crisp vs blurred. When it blurs, close eyes and breathe for 30 seconds, then return. Compare vertical objects (trees, poles) — notice the contrast. This contrast is your training target.", source: "Dec 1919 (Shifting), Oct 1919 (Swinging Cure)" },
+      { title: "Closing breath and notice", dur: 5, type: "rest", desc: "Close eyes, breathe. Notice overall how horizontal things feel compared to the start of the session. Is the shadow gap smaller? Are wires looking blacker? Did you have any moment of clean clear horizontal vision? If yes — that is your flash for today. Note it.", source: "Dec 1919 (Shifting & Swinging)" },
+      { title: "EVENING — indirect night light approach", dur: 8, type: "night", desc: "Find a horizontal light source at night — a streetlight, a lit window ledge, a neon sign, or a horizontal strip of light. Look NEAR it, not directly at it. Let it sit in your near-periphery. Do the short swing — small head movement or thumb-finger technique — while looking near the light for 2–3 minutes. Then slowly let your gaze drift toward it. Do not try to look at it — let the gaze arrive naturally from the swing. Is the doubling reduced compared to looking directly at it from the start?", source: "Sep 1919 (Doctor's Story — indirect approach), Dec 1919 (Optimums & Pessimums)" },
+    ]
+  },
+  {
+    name: "Friday", sub: "Fine Print", color: "#3d3420",
+    theme: "Deep Work Day — Fine Print & Near Vision",
+    steps: [
+      { title: "Deep breathing", dur: 5, type: "active", desc: "Separate teeth, lips closed. Breathe slowly as if yawning — cool air through nose and throat. 5–10 breaths. Let eye tension drain.", source: "Jan 1923 (Breathing)" },
+      { title: "Palming", dur: 10, type: "rest", desc: "Cover closed eyes with warm palms. Aim for deep black. If black won't come — use the familiar black object technique: think of something specific and black, shrink it to a dot, let it flash and swing.", source: "Jan 1920 (Palming Cure), Dec 1919 (Imagination Cure)" },
+      { title: "Fine print reading", dur: 10, type: "active", desc: "Find the smallest print you can (newspaper, book, phone). Look at ONE word at a time — shift from word to word without staring. Do not try to read faster or harder. The goal is relaxed shifting, not reading speed. Look especially at letters with horizontal elements: e, t, f, r. Notice if their crossbars look as black as the vertical strokes. If they don't — close eyes, imagine the crossbar black, open and look again.", source: "May 1920 (Fine Print a Benefit to the Eye)" },
+      { title: "Near-to-far alternating", dur: 10, type: "active", desc: "Hold a printed page near where you can read it comfortably. Read one line. Then look up at a distant Snellen chart or sign. Read what you can there. Then back to the near page. Alternate every 30–60 seconds. The unconscious memory of clear near print helps pull out the distant letters. This is Bates' Dec 1919 technique specifically for home treatment.", source: "Dec 1919 (Home Treatment)" },
+      { title: "Short swing while reading", dur: 10, type: "active", desc: "Hold printed text. Do the short swing — thumb and finger quarter-inch, body swaying opposite. While swinging, let your eyes trace the lines of text. Do not try to read words — let the swing carry the gaze across the line. After 5 min of swing, stop and read normally. Notice if horizontal letter bars (e, t, f) look clearer and blacker after the swing than before.", source: "May 1920 (Fine Print), Jan 1923 (Astigmatism — Short Swing)" },
+    ]
+  },
+  {
+    name: "Saturday", sub: "Long Session", color: "#3d3420",
+    theme: "Long Session — Consolidation",
+    steps: [
+      { title: "Deep breathing", dur: 5, type: "active", desc: "Separate teeth, lips closed. Breathe slowly as if yawning — cool air through nose and throat. 5–10 breaths. Today is a long session — start calm and do not rush.", source: "Jan 1923 (Breathing)" },
+      { title: "Long swing", dur: 15, type: "active", desc: "Stand. Sway your whole body gently from side to side, like a slow pendulum. Let your eyes follow naturally — do NOT try to see anything. Let the whole room swing past. Every object should appear to move opposite to your body. If objects feel stuck or stationary, you are staring — blink and breathe. Do this for the full 15 minutes. This is the deepest muscle-relaxing exercise in the Bates method.", source: "Oct 1919 (Swinging Cure), Jul 1920 (See Things Moving)" },
+      { title: "Palming with memory", dur: 15, type: "rest", desc: "Palm. Recall the clearest horizontal thing you saw this week — the best moment, the sharpest wire, the clearest flash. Hold that memory. Let it gently swing. If the memory is vivid — good, let it be. If it is vague — return to the familiar black object dot technique. Stay in this for the full 15 minutes. Do not rush toward wakefulness.", source: "Dec 1919 (Imagination Cure), Jan 1920 (Palming Cure)" },
+      { title: "All exercises in sequence", dur: 15, type: "active", desc: "Run through your core sequence: (1) Flash on a horizontal letter E — 3 min. (2) Short swing with thumb-finger — 3 min. (3) Snellen card central fixation on E, F, H — 3 min. (4) Optimum bridge — vertical to horizontal — 3 min. (5) Dream scene palm — 3 min. Move through them without pausing to analyse results.", source: "Jul 1919 (Central Fixation), Oct 1919 (Swinging), Jan 1923 (Astigmatism)" },
+      { title: "Near-far parallax outdoors", dur: 10, type: "active", desc: "Go outside (or to your terrace/window). Find layered horizontal objects — near railing + far wire, near rod + far roofline. Move head up and down. Watch the opposite swing. Wait for the blackness and solidity to arrive. This is your weekly integration exercise — the one you discovered yourself. Give it full time.", source: "Dec 1919 (Shifting), Jul 1920 (See Things Moving)" },
+      { title: "Closing palm and notice", dur: 5, type: "rest", desc: "Palm. Open eyes gently. Look at your standard horizontal test object. Compare to Monday's baseline. Is the shadow gap smaller? Is the shadow lighter? Is the line blacker? This is your informal Saturday measurement — the Sunday session will be the formal one.", source: "Jan 1920 (Palming Cure)" },
+    ]
+  },
+  {
+    name: "Sunday", sub: "Measurement", color: "#3d3420",
+    theme: "Measurement Day — Weekly Progress Check",
+    steps: [
+      { title: "MEASURE FIRST — before any exercises", dur: 1, type: "active", desc: "Do all 5 tests NOW, on completely fresh eyes, before any palming or exercises. This gives your true baseline reading. Get your test object ready: a fixed horizontal line (window ledge, shelf edge, or power line) and a printed letter H.", source: "" },
+      { title: "Test 1 — Shadow gap score", dur: 3, type: "active", desc: "Look at your fixed horizontal object. Rate the shadow: 1 = almost merged/barely visible, 2 = faint and close, 3 = moderate one-line-width gap, 4 = clear distinct shadow, 5 = thick/far shadow. Write the number. Use the same object every week.", source: "Your weekly measurement system" },
+      { title: "Test 2 — Shadow merge distance", dur: 4, type: "active", desc: "Use a horizontal ruled line on paper or a tile grout line on the floor. Hold or stand at arm's length. Walk slowly toward it. At what distance (in cm) does the shadow disappear and the line looks single and clean? Write the number. IMPROVING means this number gets LARGER week by week.", source: "Your weekly measurement system" },
+      { title: "Test 3 — H-bar clarity score", dur: 3, type: "active", desc: "Look at the letter H at comfortable reading distance. Are both horizontal bars as sharp and black as the two vertical bars? 1 = horizontal bars barely visible, 2 = clearly less sharp, 3 = visible but softer, 4 = almost equal, 5 = all four bars equally sharp and black. Write the number.", source: "Your weekly measurement system" },
+      { title: "Test 4 — Voluntary shadow control", dur: 3, type: "active", desc: "Look at a horizontal line. Now deliberately try to make the ghost worse — push it further, make it thicker. Then relax and let it return. Can you control it? No control / Partial / Good control. Write it. Increasing control means the unconscious habit is becoming conscious — and therefore releasable.", source: "Sep 1919 (Doctor's Story), Nov 1920 (Make Your Squint Worse)" },
+      { title: "Test 5 — Palm recovery", dur: 4, type: "rest", desc: "Palm for exactly 2 minutes. Open eyes immediately on your horizontal test object. Is the shadow: (a) same as before, (b) reduced for 1–3 seconds, (c) gone for 5+ seconds, (d) does not reappear. Write a/b/c/d. Progress goes a→b→c→d over weeks.", source: "Your weekly measurement system" },
+      { title: "Log all 5 scores", dur: 2, type: "active", desc: "Write today's date and all 5 scores in your weekly log table: Shadow Gap (1–5), Merge Distance (cm), H-Bar Clarity (1–5), Voluntary Control (no/partial/good), Palm Recovery (a/b/c/d). Also write your best flash from this week.", source: "" },
+      { title: "Favourite exercise from the week", dur: 10, type: "active", desc: "Now do 10 minutes of whichever exercise felt most effective this week. Do it with the relaxed quality of someone who has already done the hard work — because you have.", source: "" },
+      { title: "Rest", dur: 5, type: "rest", desc: "Palm. Rest. Let the week consolidate. Today is a soft seeing day for the remainder — no staring, shift gaze naturally. Notice horizontal objects casually throughout the day without effort.", source: "Dec 1919 (Home Treatment)" },
+    ]
+  },
+];
+
+let currentDay = null;
+let currentStep = 0;
+let timerInterval = null;
+let timeLeft = 0;
+let totalTime = 0;
+let running = false;
+
+function init() {
+  const grid = document.getElementById('day-grid');
+  DAYS.forEach((day, i) => {
+    const btn = document.createElement('div');
+    btn.className = 'day-btn';
+    btn.innerHTML = `<div class="day-name">${day.name}</div><div class="day-sub">${day.sub}</div>`;
+    btn.onclick = () => selectDay(i);
+    grid.appendChild(btn);
+  });
+}
+
+function selectDay(i) {
+  document.querySelectorAll('.day-btn').forEach((b, j) => b.classList.toggle('active', i === j));
+  currentDay = DAYS[i];
+  currentStep = 0;
+  clearInterval(timerInterval);
+  running = false;
+  document.getElementById('day-selector').classList.remove('hidden');
+  document.getElementById('session-player').classList.remove('hidden');
+  document.getElementById('done-screen').classList.add('hidden');
+  renderStep();
+  renderStepList();
+}
+
+function renderStep() {
+  if (!currentDay) return;
+  const step = currentDay.steps[currentStep];
+  const total = currentDay.steps.length;
+
+  document.getElementById('progress-bar').style.width = ((currentStep / total) * 100) + '%';
+  document.getElementById('step-counter').textContent = `Step ${currentStep + 1} of ${total} — ${currentDay.theme}`;
+
+  let tag = '';
+  if (step.type === 'rest') tag = '<span class="tag tag-rest">Rest</span>';
+  else if (step.type === 'night') tag = '<span class="tag tag-night">Evening</span>';
+  else tag = '<span class="tag tag-active">Active</span>';
+
+  document.getElementById('step-title').innerHTML = step.title + tag;
+  document.getElementById('step-desc').textContent = step.desc;
+  document.getElementById('step-source').textContent = step.source ? '📖 ' + step.source : '';
+
+  totalTime = step.dur * 60;
+  timeLeft = totalTime;
+  running = false;
+  document.getElementById('btn-start').textContent = 'Start';
+  updateTimerDisplay();
+
+  const ring = document.getElementById('timer-ring');
+  ring.className = 'timer-ring';
+  if (step.type === 'rest') ring.classList.add('rest');
+
+  document.getElementById('btn-back').disabled = currentStep === 0;
+}
+
+function renderStepList() {
+  const body = document.getElementById('step-list-body');
+  body.innerHTML = '';
+  currentDay.steps.forEach((step, i) => {
+    const div = document.createElement('div');
+    div.className = 'step-item' + (i === currentStep ? ' current' : '') + (i < currentStep ? ' done' : '');
+    div.onclick = () => jumpToStep(i);
+
+    let dotContent = i < currentStep ? '✓' : (i + 1);
+    let typeTag = '';
+    if (step.type === 'rest') typeTag = ' · rest';
+    else if (step.type === 'night') typeTag = ' · evening';
+
+    div.innerHTML = `
+      <div class="step-dot">${dotContent}</div>
+      <div class="step-item-text">
+        <div class="step-item-name">${step.title}</div>
+        <div class="step-item-dur">${step.dur} min${typeTag}</div>
+      </div>`;
+    body.appendChild(div);
+  });
+}
+
+function jumpToStep(i) {
+  stopSpeaking();
+  clearInterval(timerInterval);
+  running = false;
+  currentStep = i;
+  renderStep();
+  renderStepList();
+}
+
+function toggleTimer() {
+  if (running) {
+    stopSpeaking();
+    clearInterval(timerInterval);
+    running = false;
+    document.getElementById('btn-start').textContent = 'Resume';
+  } else {
+    running = true;
+    document.getElementById('btn-start').textContent = 'Pause';
+    // Unlock audio context on first user gesture
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const stepType = currentDay.steps[currentStep].type;
+    if (stepType === 'rest') playRestChime();
+    else playNewStep();
+    speakStep(currentDay.steps[currentStep]);
+    timerInterval = setInterval(() => {
+      timeLeft--;
+      updateTimerDisplay();
+      if (timeLeft <= 0) {
+        clearInterval(timerInterval);
+        running = false;
+        stepDone();
+      }
+    }, 1000);
+  }
+}
+
+function updateTimerDisplay() {
+  const m = Math.floor(timeLeft / 60);
+  const s = timeLeft % 60;
+  document.getElementById('timer-time').textContent = m + ':' + String(s).padStart(2, '0');
+
+  const label = currentDay ? currentDay.steps[currentStep].dur + ' min exercise' : '';
+  document.getElementById('timer-label').textContent = label;
+
+  const progress = totalTime > 0 ? timeLeft / totalTime : 1;
+  const offset = CIRCUMFERENCE * progress;
+  document.getElementById('timer-circle').style.strokeDashoffset = CIRCUMFERENCE - (CIRCUMFERENCE * (1 - progress));
+
+  if (timeLeft === 30) { playTick(); }
+  if (timeLeft <= 30 && timeLeft > 0) {
+    document.getElementById('timer-ring').classList.add('urgent');
+  } else {
+    const step = currentDay ? currentDay.steps[currentStep] : null;
+    document.getElementById('timer-ring').className = 'timer-ring' + (step && step.type === 'rest' ? ' rest' : '');
+  }
+}
+
+function stepDone() {
+  playBowl();
+  showNotif('✓ ' + currentDay.steps[currentStep].title + ' done! Moving to next step...');
+  setTimeout(() => nextStep(), 1500);
+}
+
+function nextStep() {
+  stopSpeaking();
+  clearInterval(timerInterval);
+  running = false;
+  if (currentStep < currentDay.steps.length - 1) {
+    currentStep++;
+    renderStep();
+    renderStepList();
+    scrollToPlayer();
+  } else {
+    showDone();
+  }
+}
+
+function prevStep() {
+  stopSpeaking();
+  clearInterval(timerInterval);
+  running = false;
+  if (currentStep > 0) {
+    currentStep--;
+    renderStep();
+    renderStepList();
+  }
+}
+
+function showDone() {
+  playSessionDone();
+  document.getElementById('session-player').classList.add('hidden');
+  document.getElementById('done-screen').classList.remove('hidden');
+  const total = currentDay.steps.reduce((a, s) => a + s.dur, 0);
+  const doneMsg = `You completed the ${currentDay.name} session — ${total} minutes of practice. Remember to note your best moment of the day in your log. See you tomorrow.`;
+  document.getElementById('done-message').textContent = doneMsg;
+  setTimeout(() => speak(doneMsg), 1200);
+}
+
+function resetToSelector() {
+  stopSpeaking();
+  clearInterval(timerInterval);
+  running = false;
+  currentDay = null;
+  document.querySelectorAll('.day-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('session-player').classList.add('hidden');
+  document.getElementById('done-screen').classList.add('hidden');
+}
+
+function showNotif(msg) {
+  const bar = document.getElementById('notif-bar');
+  bar.textContent = msg;
+  bar.style.display = 'block';
+  setTimeout(() => { bar.style.display = 'none'; }, 2000);
+}
+
+function scrollToPlayer() {
+  document.getElementById('session-player').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ─── VOICE / TTS ENGINE ─────────────────────────────────────────────────────────
+let voiceEnabled = true;
+let speechRate = 0.92;
+let speechPitch = 1.0;
+let selectedVoice = '';
+let currentUtterance = null;
+let isSpeaking = false;
+
+function initVoices() {
+  const ttsAvailable = ('speechSynthesis' in window) && ('SpeechSynthesisUtterance' in window);
+  const voiceRow = document.getElementById('voice-row');
+  if (!ttsAvailable) {
+    // Hide voice UI entirely — not supported in this environment
+    if (voiceRow) voiceRow.innerHTML = '<div style="font-size:12px;color:#b0a898;padding:2px 0;">&#127908; Voice not available — open in Chrome or Safari on your phone</div>';
+    voiceEnabled = false;
+    return;
+  }
+  const sel = document.getElementById('voice-select');
+  function populate() {
+    try {
+      const voices = window.speechSynthesis.getVoices();
+      if (!voices || !voices.length) return;
+      sel.innerHTML = '';
+      const preferred = voices.filter(v => /en[-_]/i.test(v.lang) && (v.name.includes('Natural') || v.name.includes('Enhanced') || v.name.includes('Premium') || v.name.includes('Neural')));
+      const english = voices.filter(v => /en[-_]/i.test(v.lang));
+      const ordered = [...new Set([...preferred, ...english, ...voices])];
+      ordered.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.name;
+        opt.textContent = v.name + ' (' + v.lang + (v.default ? ') ★' : ')');
+        sel.appendChild(opt);
+      });
+      if (ordered.length) { sel.value = ordered[0].name; selectedVoice = ordered[0].name; }
+    } catch(e) { console.warn('Voice list error:', e); }
+  }
+  try {
+    populate();
+    window.speechSynthesis.onvoiceschanged = populate;
+  } catch(e) { console.warn('initVoices error:', e); }
+}
+
+function setVoiceOn(val) {
+  voiceEnabled = val;
+  document.getElementById('voice-on').classList.toggle('on', val);
+  document.getElementById('voice-off').classList.toggle('on', !val);
+  if (!val) stopSpeaking();
+  else if (currentDay) speakStep(currentDay.steps[currentStep]);
+}
+
+function toggleVoiceSettings() {
+  const ctrl = document.getElementById('voice-controls');
+  const top = document.getElementById('voice-row-top');
+  const open = ctrl.classList.toggle('open');
+  top.classList.toggle('open', open);
+}
+
+function testVoice() {
+  speak("This is a test of the voice instructions. Adjust speed and pitch to your preference.");
+}
+
+function speak(text, onEnd) {
+  try {
+    if (!('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
+    stopSpeaking();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = speechRate;
+    utter.pitch = speechPitch;
+    try {
+      const voices = window.speechSynthesis.getVoices() || [];
+      const match = voices.find(v => v.name === selectedVoice);
+      if (match) utter.voice = match;
+    } catch(e) {}
+    utter.onstart = () => {
+      isSpeaking = true;
+      const btn = document.getElementById('speak-btn');
+      if (btn) { btn.textContent = '⏸ Stop'; btn.classList.add('speaking'); }
+    };
+    utter.onend = () => {
+      isSpeaking = false;
+      const btn = document.getElementById('speak-btn');
+      if (btn) { btn.textContent = '▶ Listen'; btn.classList.remove('speaking'); }
+      if (onEnd) onEnd();
+    };
+    utter.onerror = () => {
+      isSpeaking = false;
+      const btn = document.getElementById('speak-btn');
+      if (btn) { btn.textContent = '▶ Listen'; btn.classList.remove('speaking'); }
+    };
+    currentUtterance = utter;
+    window.speechSynthesis.speak(utter);
+  } catch(e) { console.warn('speak() error:', e); }
+}
+
+function stopSpeaking() {
+  try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch(e) {}
+  isSpeaking = false;
+  const btn = document.getElementById('speak-btn');
+  if (btn) { btn.textContent = '▶ Listen'; btn.classList.remove('speaking'); }
+}
+
+function toggleSpeak() {
+  if (isSpeaking) { stopSpeaking(); return; }
+  if (!currentDay) return;
+  const step = currentDay.steps[currentStep];
+  speakStep(step);
+}
+
+function speakStep(step) {
+  if (!voiceEnabled || !step) return;
+  // Brief pause after chime before speaking — 800ms
+  const text = step.title + '. ' + step.desc;
+  setTimeout(() => speak(text), 800);
+}
+
+// ─── AUDIO ENGINE ───────────────────────────────────────────
+let audioCtx = null;
+let soundEnabled = true;
+
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function setSoundOn(val) {
+  soundEnabled = val;
+  document.getElementById('snd-on').classList.toggle('on', val);
+  document.getElementById('snd-off').classList.toggle('on', !val);
+  if (val) playTick(); // preview
+}
+
+// Core tone builder
+function playTone(freq, type, gainVal, startTime, duration, ctx, fadeOut = true) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, startTime);
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(gainVal, startTime + 0.01);
+  if (fadeOut) gain.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+  osc.start(startTime);
+  osc.stop(startTime + duration + 0.05);
+}
+
+// Singing bowl — warm, meditative chime (step complete)
+function playBowl() {
+  if (!soundEnabled) return;
+  const ctx = getCtx();
+  const now = ctx.currentTime;
+  // Fundamental + harmonics for bowl character
+  playTone(220,  'sine', 0.35, now,        4.5, ctx);
+  playTone(440,  'sine', 0.18, now + 0.01, 3.8, ctx);
+  playTone(660,  'sine', 0.10, now + 0.02, 3.2, ctx);
+  playTone(880,  'sine', 0.06, now + 0.03, 2.5, ctx);
+  playTone(1100, 'sine', 0.03, now + 0.03, 2.0, ctx);
+}
+
+// Double soft chime — new step starting
+function playNewStep() {
+  if (!soundEnabled) return;
+  const ctx = getCtx();
+  const now = ctx.currentTime;
+  // First chime
+  playTone(523.25, 'sine', 0.25, now,        1.8, ctx);
+  playTone(783.99, 'sine', 0.12, now + 0.01, 1.6, ctx);
+  // Second chime (slightly higher, 0.45s later)
+  playTone(659.25, 'sine', 0.22, now + 0.45, 1.8, ctx);
+  playTone(987.77, 'sine', 0.10, now + 0.46, 1.5, ctx);
+}
+
+// Soft tick — 30 second warning
+function playTick() {
+  if (!soundEnabled) return;
+  const ctx = getCtx();
+  const now = ctx.currentTime;
+  playTone(880, 'sine', 0.12, now,       0.08, ctx);
+  playTone(880, 'sine', 0.12, now + 0.1, 0.08, ctx);
+}
+
+// Deep bell — session complete
+function playSessionDone() {
+  if (!soundEnabled) return;
+  const ctx = getCtx();
+  const now = ctx.currentTime;
+  playTone(110,    'sine', 0.45, now,        6.0, ctx);
+  playTone(220,    'sine', 0.25, now + 0.01, 5.5, ctx);
+  playTone(330,    'sine', 0.15, now + 0.02, 4.5, ctx);
+  playTone(146.83, 'sine', 0.20, now + 0.8,  5.0, ctx);
+  playTone(293.66, 'sine', 0.12, now + 0.81, 4.2, ctx);
+}
+
+// Gentle rest chime — entering a rest step
+function playRestChime() {
+  if (!soundEnabled) return;
+  const ctx = getCtx();
+  const now = ctx.currentTime;
+  // Descending calm tones
+  playTone(392, 'sine', 0.20, now,        2.5, ctx);
+  playTone(349, 'sine', 0.16, now + 0.3,  2.5, ctx);
+  playTone(330, 'sine', 0.14, now + 0.6,  3.0, ctx);
+  playTone(293, 'sine', 0.10, now + 0.9,  3.5, ctx);
+}
+// ─────────────────────────────────────────────────────────────
+
+init();
+initVoices();
+</script>
+</body>
+</html>

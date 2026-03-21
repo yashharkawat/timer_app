@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+.claude/
+
+# Old frontend root (moved to scheduleai/frontend/)
+scheduleai/src/
+scheduleai/index.html
+scheduleai/package.json
+scheduleai/vite.config.js
+scheduleai/public/
