@@ -1,208 +1,219 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useStore from '../store/useStore.js';
-import TimerRing from '../components/TimerRing.jsx';
-import StepCard from '../components/StepCard.jsx';
-import StepList from '../components/StepList.jsx';
-import { playBowl, playNewStep, playRestChime, playTick, playSessionDone } from '../lib/sounds.js';
-import { speak, stop as stopSpeech, getIsSpeaking } from '../lib/tts.js';
+import { playBowl, playNewStep, playRestChime, playSessionDone, playCountdownBeep, playPrepareStart } from '../lib/sounds.js';
+import { speak, stop as stopSpeech } from '../lib/tts.js';
+
+const PHASE = {
+  prepare: { label: 'PREPARE', bg: '#b84a0a' },
+  work:    { label: 'WORK',    bg: '#1a6b3a' },
+  rest:    { label: 'REST',    bg: '#1455a6' },
+};
 
 export default function Session() {
   const { dayId } = useParams();
   const navigate = useNavigate();
-  const { schedule, session, settings, startSession, setSessionStep, tickSession, startRest, completeSession } = useStore();
-
-  const [localRunning, setLocalRunning] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [showDone, setShowDone] = useState(false);
-  const [doneNote, setDoneNote] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const intervalRef = useRef(null);
-  const wakeLockRef = useRef(null);
+  const { schedule, settings, completeSession } = useStore();
 
   const day = schedule?.days?.find(d => d.id === dayId);
-  const step = day?.steps[session.currentStepIndex];
-  const restSeconds = schedule?.restSeconds ?? 30;
+  const steps = day?.steps || [];
 
+  const restSeconds = schedule?.restSeconds ?? 30;
+  const prepareSeconds = settings.prepareSeconds ?? 5;
+  const skipLastRest = settings.skipLastRest ?? false;
+  const finalCount = settings.finalCount ?? 3;
   const soundEnabled = settings.soundsEnabled;
   const voiceEnabled = settings.voiceEnabled;
   const volume = settings.soundVolume;
 
+  const [stepIndex, setStepIndex] = useState(0);
+  const [currentSet, setCurrentSet] = useState(1);
+  const [phase, setPhase] = useState('prepare');
+  const [timeLeft, setTimeLeft] = useState(prepareSeconds > 0 ? prepareSeconds : (steps[0]?.durationMinutes || 5) * 60);
+  const [running, setRunning] = useState(false);
+  const [showDone, setShowDone] = useState(false);
+  const [doneNote, setDoneNote] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [wakeLock, setWakeLock] = useState(null);
+
+  const intervalRef = useRef(null);
+  const stateRef = useRef({ stepIndex: 0, currentSet: 1, phase: 'prepare', timeLeft: prepareSeconds > 0 ? prepareSeconds : (steps[0]?.durationMinutes || 5) * 60 });
+
+  // Keep ref in sync
   useEffect(() => {
-    if (day && (!session.dayId || session.dayId !== dayId)) {
-      startSession(dayId);
+    stateRef.current = { stepIndex, currentSet, phase, timeLeft };
+  }, [stepIndex, currentSet, phase, timeLeft]);
+
+  const requestWakeLock = async () => {
+    try {
+      if ('wakeLock' in navigator && settings.keepScreenOn) {
+        const wl = await navigator.wakeLock.request('screen');
+        setWakeLock(wl);
+      }
+    } catch {}
+  };
+
+  const releaseWakeLock = () => {
+    try { wakeLock?.release(); } catch {}
+  };
+
+  // Initialize a step
+  const initStep = useCallback((idx, set = 1, ph = null) => {
+    const s = steps[idx];
+    if (!s) return;
+    const startPhase = ph || (prepareSeconds > 0 ? 'prepare' : 'work');
+    const startTime = startPhase === 'prepare' ? prepareSeconds : s.durationMinutes * 60;
+    setStepIndex(idx);
+    setCurrentSet(set);
+    setPhase(startPhase);
+    setTimeLeft(startTime);
+    if (startPhase === 'prepare' && soundEnabled) playPrepareStart(volume);
+    if (startPhase === 'work' && voiceEnabled && s.instructions) {
+      setTimeout(() => speak(`${s.title}. ${s.instructions}`, { rate: settings.voiceRate, pitch: settings.voicePitch, voiceName: settings.voiceName }), 500);
     }
-  }, [dayId]);
+  }, [steps, prepareSeconds, soundEnabled, voiceEnabled, volume, settings]);
 
-  const speakStep = useCallback((s) => {
-    if (!voiceEnabled || !s?.instructions) return;
-    speak(`${s.title || 'Exercise'}. ${s.instructions}`, {
-      rate: settings.voiceRate,
-      pitch: settings.voicePitch,
-      voiceName: settings.voiceName,
-      onStart: () => setIsSpeaking(true),
-      onEnd: () => setIsSpeaking(false),
-      onError: () => setIsSpeaking(false),
-    });
-  }, [voiceEnabled, settings.voiceRate, settings.voicePitch, settings.voiceName]);
-
-  const goToStep = useCallback((index, skipRest = false) => {
-    stopSpeech();
-    setLocalRunning(false);
-    clearInterval(intervalRef.current);
-    setIsSpeaking(false);
-
-    const d = useStore.getState().schedule?.days?.find(dd => dd.id === dayId);
-    if (!d) return;
-    const newStep = d.steps[index];
-    if (!newStep) return;
-
-    setSessionStep(index);
-    if (soundEnabled) playNewStep(volume);
-    if (voiceEnabled && settings.voiceAutoRead) {
-      setTimeout(() => speakStep(newStep), 800);
-    }
-  }, [soundEnabled, volume, voiceEnabled, dayId, settings.voiceAutoRead, speakStep]);
-
-  const beginRest = useCallback(() => {
-    stopSpeech();
-    setLocalRunning(false);
-    clearInterval(intervalRef.current);
-    setIsSpeaking(false);
-    if (soundEnabled) playRestChime(volume);
-    startRest();
-    setLocalRunning(true);
-  }, [soundEnabled, volume, dayId, startRest]);
-
-  const finishSession = useCallback(() => {
-    setLocalRunning(false);
-    clearInterval(intervalRef.current);
-    stopSpeech();
-    if (soundEnabled) playSessionDone(volume);
-    releaseWakeLock();
-    setShowDone(true);
-    setTimeout(() => {
-      speak('Session complete. Well done.', {
-        rate: settings.voiceRate,
-        pitch: settings.voicePitch,
-        voiceName: settings.voiceName,
-      });
-    }, 1200);
-  }, [soundEnabled, volume, settings]);
-
-  // Main interval tick
+  // Init on mount
   useEffect(() => {
-    if (localRunning) {
-      intervalRef.current = setInterval(() => {
-        const s = useStore.getState().session;
-        const d = useStore.getState().schedule?.days?.find(dd => dd.id === dayId);
+    if (steps.length > 0) initStep(0);
+  }, []);
 
-        if (s.isResting) {
-          if (s.restTimeLeft <= 1) {
-            clearInterval(intervalRef.current);
-            const nextIndex = s.currentStepIndex + 1;
-            if (d && nextIndex < d.steps.length) {
-              goToStep(nextIndex, true);
-            } else {
-              finishSession();
-            }
-          } else {
-            tickSession();
-          }
+  // Transition when a phase ends
+  const onPhaseComplete = useCallback(() => {
+    const { stepIndex: si, currentSet: cs, phase: ph } = stateRef.current;
+    const step = steps[si];
+    if (!step) return;
+    const totalSets = step.sets || 1;
+
+    stopSpeech();
+
+    if (ph === 'prepare') {
+      // Start work
+      if (soundEnabled) playNewStep(volume);
+      if (voiceEnabled && step.instructions) {
+        setTimeout(() => speak(`${step.title}. ${step.instructions}`, { rate: settings.voiceRate, pitch: settings.voicePitch, voiceName: settings.voiceName }), 300);
+      }
+      setPhase('work');
+      setTimeLeft(step.durationMinutes * 60);
+
+    } else if (ph === 'work') {
+      if (soundEnabled) playBowl(volume);
+      const isLastSet = cs >= totalSets;
+      if (isLastSet) {
+        // Move to next exercise or finish
+        const nextIdx = si + 1;
+        if (nextIdx < steps.length) {
+          setTimeout(() => initStep(nextIdx), 800);
         } else {
-          if (s.timeLeft <= 1) {
-            clearInterval(intervalRef.current);
-            if (soundEnabled) playBowl(volume);
-            setTimeout(() => {
-              const s2 = useStore.getState().session;
-              const d2 = useStore.getState().schedule?.days?.find(dd => dd.id === dayId);
-              if (!d2) return;
-              if (restSeconds > 0 && s2.currentStepIndex < d2.steps.length - 1) {
-                beginRest();
-              } else if (s2.currentStepIndex < d2.steps.length - 1) {
-                goToStep(s2.currentStepIndex + 1, true);
-              } else {
-                finishSession();
-              }
-            }, 800);
-          } else {
-            if (s.timeLeft === 30 && soundEnabled) playTick(volume);
-            tickSession();
-          }
+          // Done
+          setTimeout(() => {
+            if (soundEnabled) playSessionDone(volume);
+            releaseWakeLock();
+            setRunning(false);
+            setShowDone(true);
+          }, 800);
         }
-      }, 1000);
-    } else {
-      clearInterval(intervalRef.current);
-    }
-    return () => clearInterval(intervalRef.current);
-  }, [localRunning]);
+      } else {
+        // More sets: go to rest
+        if (soundEnabled) playRestChime(volume);
+        setPhase('rest');
+        setTimeLeft(restSeconds);
+      }
 
-  const toggleTimer = () => {
-    if (localRunning) {
-      setLocalRunning(false);
-      stopSpeech();
-      setIsSpeaking(false);
-      releaseWakeLock();
-    } else {
-      setLocalRunning(true);
-      requestWakeLock();
-      const s = useStore.getState().session;
-      if (!s.isResting && s.timeLeft === s.totalTime) {
-        if (soundEnabled) playNewStep(volume);
-        if (voiceEnabled && settings.voiceAutoRead && step) {
-          setTimeout(() => speakStep(step), 800);
-        }
+    } else if (ph === 'rest') {
+      // Next set
+      const nextSet = cs + 1;
+      setCurrentSet(nextSet);
+      setPhase('work');
+      setTimeLeft(step.durationMinutes * 60);
+      if (soundEnabled) playNewStep(volume);
+      if (voiceEnabled && step.instructions) {
+        setTimeout(() => speak(`Set ${nextSet}. ${step.title}.`, { rate: settings.voiceRate, pitch: settings.voicePitch, voiceName: settings.voiceName }), 300);
       }
     }
+  }, [steps, soundEnabled, voiceEnabled, volume, restSeconds, settings, initStep]);
+
+  // Interval tick
+  useEffect(() => {
+    if (running) {
+      intervalRef.current = setInterval(() => {
+        setTimeLeft(t => {
+          const next = t - 1;
+          // Final count beeps
+          if (next <= finalCount && next > 0 && soundEnabled) {
+            playCountdownBeep(volume);
+          }
+          if (next <= 0) {
+            clearInterval(intervalRef.current);
+            onPhaseComplete();
+            return 0;
+          }
+          return next;
+        });
+      }, 1000);
+      requestWakeLock();
+    } else {
+      clearInterval(intervalRef.current);
+      releaseWakeLock();
+    }
+    return () => clearInterval(intervalRef.current);
+  }, [running, onPhaseComplete, finalCount, soundEnabled, volume]);
+
+  useEffect(() => () => { clearInterval(intervalRef.current); stopSpeech(); releaseWakeLock(); }, []);
+
+  const toggleRunning = () => setRunning(r => !r);
+
+  const skipPhase = (e) => {
+    e?.stopPropagation();
+    clearInterval(intervalRef.current);
+    setRunning(false);
+    onPhaseComplete();
+    setTimeout(() => setRunning(true), 100);
+  };
+
+  const prevExercise = (e) => {
+    e?.stopPropagation();
+    clearInterval(intervalRef.current);
+    stopSpeech();
+    setRunning(false);
+    const prev = Math.max(0, stepIndex - 1);
+    initStep(prev);
+    setTimeout(() => setRunning(true), 100);
   };
 
   const handleSaveFinish = async () => {
     setSaving(true);
     await completeSession(doneNote);
-    navigate('/schedule');
+    navigate('/');
   };
 
-  const requestWakeLock = async () => {
-    try {
-      if ('wakeLock' in navigator && settings.keepScreenOn) {
-        wakeLockRef.current = await navigator.wakeLock.request('screen');
-      }
-    } catch (e) {}
-  };
+  if (!day || steps.length === 0) {
+    return (
+      <div className="min-h-screen bg-[#0c0e16] flex items-center justify-center">
+        <p className="text-white/60">No exercises found.</p>
+      </div>
+    );
+  }
 
-  const releaseWakeLock = () => {
-    try { wakeLockRef.current?.release(); } catch (e) {}
-  };
+  const step = steps[stepIndex];
+  const totalSets = step?.sets || 1;
+  const config = PHASE[phase] || PHASE.work;
+  const mins = String(Math.floor(timeLeft / 60)).padStart(2, '0');
+  const secs = String(timeLeft % 60).padStart(2, '0');
+  const progressPct = ((stepIndex + (phase === 'prepare' ? 0 : currentSet / totalSets)) / steps.length) * 100;
 
-  useEffect(() => {
-    return () => {
-      clearInterval(intervalRef.current);
-      stopSpeech();
-      releaseWakeLock();
-    };
-  }, []);
-
-  if (!day || !step) return (
-    <div className="min-h-screen bg-[#f0f2ff] dark:bg-[#0c0e16] flex items-center justify-center">
-      <p className="text-[#64748b] dark:text-[#94a3b8]">Loading...</p>
-    </div>
-  );
-
-  // ── DONE SCREEN ──────────────────────────────────────────────────────────────
+  // Done screen
   if (showDone) {
-    const total = day.steps.reduce((a, s) => a + s.durationMinutes, 0);
     return (
       <div className="min-h-screen bg-[#f0f2ff] dark:bg-[#0c0e16] flex flex-col">
         <div className="max-w-lg mx-auto w-full px-4 pt-16 pb-8 flex flex-col items-center text-center flex-1">
-          {/* Indigo checkmark circle */}
           <div className="w-20 h-20 bg-[#6366f1] rounded-full flex items-center justify-center mb-6 shadow-lg">
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12"/>
             </svg>
           </div>
           <h2 className="text-2xl font-bold text-[#0f172a] dark:text-[#f1f5f9] mb-2">Session complete</h2>
-          <p className="text-[#64748b] dark:text-[#94a3b8] mb-8">{day.name} — {total} minutes. Well done.</p>
+          <p className="text-[#64748b] dark:text-[#94a3b8] mb-8">{day.name} — {steps.reduce((a, s) => a + s.durationMinutes * (s.sets || 1), 0)} min total</p>
           <textarea
             className="w-full border border-[#dde1ef] dark:border-[#1e2235] rounded-xl px-4 py-3 text-sm mb-5 bg-white dark:bg-[#131720] text-[#0f172a] dark:text-[#f1f5f9] placeholder-[#94a3b8] resize-none focus:outline-none focus:border-[#6366f1]"
             rows={3}
@@ -222,130 +233,116 @@ export default function Session() {
     );
   }
 
-  // ── REST SCREEN ──────────────────────────────────────────────────────────────
-  if (session.isResting) {
-    const nextStep = day.steps[session.currentStepIndex + 1];
-    return (
-      <div className="min-h-screen bg-[#f0f2ff] dark:bg-[#0c0e16]">
-        <div className="max-w-lg mx-auto px-4 pt-4 pb-8">
-          <div className="flex items-center gap-3 mb-6">
-            <button
-              onClick={() => { setLocalRunning(false); navigate('/schedule'); }}
-              className="flex items-center gap-1.5 text-[#64748b] hover:text-[#0f172a] dark:hover:text-[#f1f5f9] text-sm font-medium transition-colors"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="15 18 9 12 15 6"/>
-              </svg>
-              Back
-            </button>
-            <div className="flex-1 text-center text-sm text-[#64748b] dark:text-[#94a3b8]">{day.name}</div>
-          </div>
-
-          <div className="bg-white dark:bg-[#131720] rounded-2xl border shadow-[0_1px_3px_rgba(99,102,241,0.08),0_2px_8px_rgba(99,102,241,0.05)] dark:shadow-none border-[#dde1ef] dark:border-[#1e2235] p-8 text-center">
-            <p className="text-xs font-semibold text-[#64748b] dark:text-[#94a3b8] uppercase tracking-wider mb-3">Rest</p>
-            <div className="text-6xl font-bold text-[#6366f1] mb-4">{session.restTimeLeft}s</div>
-            {nextStep && (
-              <div className="bg-[#f0f2ff] dark:bg-[#0c0e16] rounded-xl px-4 py-3 mb-6">
-                <p className="text-xs text-[#64748b] dark:text-[#94a3b8] mb-1">Up next</p>
-                <p className="text-sm font-semibold text-[#0f172a] dark:text-[#f1f5f9]">{nextStep.title || `Exercise ${session.currentStepIndex + 2}`}</p>
-                <p className="text-xs text-[#64748b] dark:text-[#94a3b8] mt-0.5">{nextStep.durationMinutes} min</p>
-              </div>
-            )}
-            <button
-              onClick={() => goToStep(session.currentStepIndex + 1, true)}
-              className="w-full py-3.5 bg-[#f1f5f9] dark:bg-[#1e2235] text-[#64748b] dark:text-[#94a3b8] rounded-xl font-semibold text-sm hover:bg-[#eef2ff] dark:hover:bg-[#1e2040] hover:text-[#6366f1] dark:hover:text-[#818cf8] transition-all active:scale-[0.98]"
-            >
-              Skip rest
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── MAIN SESSION SCREEN ──────────────────────────────────────────────────────
-  const progressPct = (session.currentStepIndex / day.steps.length) * 100;
-
   return (
-    <div className="min-h-screen bg-[#f0f2ff] dark:bg-[#0c0e16]">
-      <div className="max-w-lg mx-auto px-4 pt-4 pb-8">
-        <div className="flex items-center gap-3 mb-3">
-          <button
-            onClick={() => { stopSpeech(); setLocalRunning(false); navigate('/schedule'); }}
-            className="flex items-center gap-1.5 text-[#64748b] hover:text-[#0f172a] dark:hover:text-[#f1f5f9] text-sm font-medium transition-colors"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
-            Back
-          </button>
-          <div className="flex-1 text-center text-sm text-[#64748b] dark:text-[#94a3b8] font-medium">
-            {day.name} · {session.currentStepIndex + 1}/{day.steps.length}
-          </div>
-        </div>
-
-        <div className="h-1.5 bg-[#e2e8f4] dark:bg-[#1e2235] rounded-full mb-4 overflow-hidden">
-          <div
-            className="h-full bg-[#6366f1] rounded-full transition-all duration-500"
-            style={{ width: `${progressPct}%` }}
-          />
-        </div>
-
-        <div className="bg-white dark:bg-[#131720] rounded-2xl border shadow-[0_1px_3px_rgba(99,102,241,0.08),0_2px_8px_rgba(99,102,241,0.05)] dark:shadow-none border-[#dde1ef] dark:border-[#1e2235] overflow-hidden mb-4">
-          <div className="p-5 relative">
-            <StepCard
-              step={step}
-              stepNum={session.currentStepIndex + 1}
-              totalSteps={day.steps.length}
-              dayName={day.name}
-              isSpeaking={isSpeaking}
-              onListen={() => {
-                if (getIsSpeaking()) { stopSpeech(); setIsSpeaking(false); }
-                else speakStep(step);
-              }}
-            />
-          </div>
-          <div className="border-t border-[#dde1ef] dark:border-[#1e2235] p-5">
-            <TimerRing timeLeft={session.timeLeft} totalTime={session.totalTime} stepType="active" />
-            <div className="text-center text-sm text-[#64748b] dark:text-[#94a3b8] mt-2 mb-4">
-              {step.durationMinutes} min
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => goToStep(session.currentStepIndex - 1)}
-                disabled={session.currentStepIndex === 0}
-                className="flex-1 py-3.5 bg-[#f1f5f9] dark:bg-[#1e2235] text-[#64748b] dark:text-[#94a3b8] rounded-xl font-semibold text-sm disabled:opacity-40 hover:bg-[#eef2ff] dark:hover:bg-[#1e2040] hover:text-[#6366f1] dark:hover:text-[#818cf8] transition-all active:scale-95 flex items-center justify-center gap-1.5"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="15 18 9 12 15 6"/>
-                </svg>
-                Back
-              </button>
-              <button
-                onClick={toggleTimer}
-                className="flex-1 py-3.5 bg-[#6366f1] hover:bg-[#4f46e5] text-white rounded-xl font-semibold text-sm transition-all active:scale-95"
-              >
-                {localRunning ? 'Pause' : session.timeLeft < session.totalTime ? 'Resume' : 'Start'}
-              </button>
-              <button
-                onClick={() => {
-                  const d = useStore.getState().schedule?.days?.find(dd => dd.id === dayId);
-                  if (session.currentStepIndex < (d?.steps.length ?? 0) - 1) goToStep(session.currentStepIndex + 1);
-                  else finishSession();
-                }}
-                className="flex-1 py-3.5 bg-[#f1f5f9] dark:bg-[#1e2235] text-[#64748b] dark:text-[#94a3b8] rounded-xl font-semibold text-sm hover:bg-[#eef2ff] dark:hover:bg-[#1e2040] hover:text-[#6366f1] dark:hover:text-[#818cf8] transition-all active:scale-95 flex items-center justify-center gap-1.5"
-              >
-                Skip
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <StepList steps={day.steps} currentIndex={session.currentStepIndex} onJump={goToStep} />
+    <div
+      className="fixed inset-0 flex flex-col items-center justify-center select-none transition-colors duration-500"
+      style={{ backgroundColor: config.bg }}
+      onClick={toggleRunning}
+    >
+      {/* Top progress bar */}
+      <div className="absolute top-0 left-0 right-0 h-1 bg-white/10">
+        <div className="h-full bg-white/50 transition-all duration-500" style={{ width: `${progressPct}%` }} />
       </div>
+
+      {/* Back button */}
+      <button
+        onClick={(e) => { e.stopPropagation(); stopSpeech(); clearInterval(intervalRef.current); navigate('/'); }}
+        className="absolute top-8 left-5 flex items-center gap-1.5 text-white/70 hover:text-white text-sm font-medium transition-colors"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+        Exit
+      </button>
+
+      {/* Exercise name */}
+      <p className="absolute top-8 left-0 right-0 text-center text-white/70 text-xs font-bold uppercase tracking-[0.2em] px-20">
+        {step?.title || 'Exercise'}
+      </p>
+
+      {/* Content */}
+      <div className="flex flex-col items-center pointer-events-none">
+        {/* Set number */}
+        {totalSets > 1 && (
+          <p className="text-white/50 font-bold mb-2" style={{ fontSize: 'clamp(2.5rem, 10vw, 5rem)', lineHeight: 1 }}>
+            {currentSet}
+          </p>
+        )}
+
+        {/* Big countdown */}
+        <p className="text-white font-black tabular-nums" style={{ fontSize: 'clamp(5rem, 22vw, 11rem)', lineHeight: 1, letterSpacing: '-0.03em' }}>
+          {mins}:{secs}
+        </p>
+
+        {/* Phase label */}
+        <p className="font-black uppercase tracking-[0.12em] mt-3" style={{ fontSize: 'clamp(2rem, 9vw, 5rem)', color: 'rgba(255,255,255,0.18)', lineHeight: 1 }}>
+          {config.label}
+        </p>
+      </div>
+
+      {/* Bottom controls */}
+      <div
+        className="absolute bottom-10 flex items-center gap-10"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Prev */}
+        <button
+          onClick={prevExercise}
+          className="w-12 h-12 rounded-full bg-white/10 active:bg-white/20 flex items-center justify-center transition-colors"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+
+        {/* Play/Pause */}
+        <button
+          onClick={toggleRunning}
+          className="w-16 h-16 rounded-full bg-white/20 active:bg-white/30 flex items-center justify-center transition-colors"
+        >
+          {running ? (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+              <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+            </svg>
+          ) : (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+          )}
+        </button>
+
+        {/* Next / skip phase */}
+        <button
+          onClick={skipPhase}
+          className="w-12 h-12 rounded-full bg-white/10 active:bg-white/20 flex items-center justify-center transition-colors"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* Exercise list indicator (dots) */}
+      <div className="absolute bottom-28 flex gap-1.5">
+        {steps.map((_, i) => (
+          <div
+            key={i}
+            className="rounded-full transition-all"
+            style={{
+              width: i === stepIndex ? '16px' : '6px',
+              height: '6px',
+              backgroundColor: i === stepIndex ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.3)',
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Pause overlay */}
+      {!running && (
+        <div className="absolute inset-0 bg-black/20 flex items-center justify-center pointer-events-none">
+          <p className="text-white/80 text-lg font-semibold tracking-wider uppercase">Paused — tap to resume</p>
+        </div>
+      )}
     </div>
   );
 }

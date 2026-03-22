@@ -11,6 +11,7 @@ function emptyStep(index) {
     title: '',
     durationMinutes: 5,
     instructions: '',
+    sets: 1,
   };
 }
 
@@ -61,6 +62,7 @@ export default function ScheduleEditor() {
             title: step.title || `Exercise`,
             durationMinutes: Number(step.durationMinutes) || 5,
             instructions: step.instructions || null,
+            sets: Number(step.sets) || 1,
           })),
         })),
       };
@@ -168,6 +170,18 @@ export default function ScheduleEditor() {
                             value={step.title}
                             onChange={e => updateStep(di, si, 'title', e.target.value)}
                           />
+                          {/* Sets stepper */}
+                          <div className="flex items-center gap-0.5">
+                            <button
+                              onClick={() => updateStep(di, si, 'sets', Math.max(1, (step.sets || 1) - 1))}
+                              className="w-6 h-6 bg-[#dde1ef] dark:bg-[#1e2235] rounded-lg text-[#64748b] dark:text-[#94a3b8] flex items-center justify-center text-xs font-bold hover:bg-[#6366f1] hover:text-white transition-colors"
+                            >−</button>
+                            <span className="w-6 text-center text-xs font-semibold text-[#0f172a] dark:text-[#f1f5f9]">{step.sets || 1}x</span>
+                            <button
+                              onClick={() => updateStep(di, si, 'sets', Math.min(20, (step.sets || 1) + 1))}
+                              className="w-6 h-6 bg-[#dde1ef] dark:bg-[#1e2235] rounded-lg text-[#64748b] dark:text-[#94a3b8] flex items-center justify-center text-xs font-bold hover:bg-[#6366f1] hover:text-white transition-colors"
+                            >+</button>
+                          </div>
                           <div className="flex items-center gap-1">
                             <input
                               type="number"

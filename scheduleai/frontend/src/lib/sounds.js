@@ -69,3 +69,16 @@ export function playSessionDone(volume = 0.8) {
   playTone(146.83, 'sine', 0.20 * v, now + 0.8,  5.0, ctx);
   playTone(293.66, 'sine', 0.12 * v, now + 0.81, 4.2, ctx);
 }
+
+export function playCountdownBeep(volume = 0.8) {
+  const ctx = getCtx();
+  const now = ctx.currentTime;
+  playTone(1047, 'sine', 0.18 * volume, now, 0.12, ctx);
+}
+
+export function playPrepareStart(volume = 0.8) {
+  const ctx = getCtx();
+  const now = ctx.currentTime;
+  playTone(440, 'sine', 0.15 * volume, now, 0.1, ctx);
+  playTone(660, 'sine', 0.12 * volume, now + 0.12, 0.1, ctx);
+}

@@ -46,12 +46,22 @@ export default function App() {
     return () => clearInterval(id);
   }, [settings.keepAlive]);
 
-  // Dark mode
+  // Theme (auto follows system preference)
   useEffect(() => {
-    if (settings.theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+    const apply = (theme) => {
+      if (theme === 'auto') {
+        const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.classList.toggle('dark', dark);
+      } else {
+        document.documentElement.classList.toggle('dark', theme === 'dark');
+      }
+    };
+    apply(settings.theme);
+    if (settings.theme === 'auto') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      const handler = (e) => document.documentElement.classList.toggle('dark', e.matches);
+      mq.addEventListener('change', handler);
+      return () => mq.removeEventListener('change', handler);
     }
   }, [settings.theme]);
 

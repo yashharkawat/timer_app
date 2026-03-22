@@ -18,9 +18,12 @@ const useStore = create(
         voiceAutoRead: true,
         soundsEnabled: true,
         soundVolume: 0.8,
-        theme: 'dark',
+        theme: 'auto',
         keepScreenOn: true,
         keepAlive: false,
+        prepareSeconds: 5,
+        skipLastRest: false,
+        finalCount: 3,
         notifTimezone: -new Date().getTimezoneOffset(), // minutes east of UTC
       },
       log: [],
@@ -70,6 +73,9 @@ const useStore = create(
               theme: s.theme,
               keepScreenOn: s.keepScreenOn,
               notifTimezone: s.notifTimezone ?? -new Date().getTimezoneOffset(),
+              prepareSeconds: s.prepareSeconds ?? 5,
+              skipLastRest: s.skipLastRest ?? false,
+              finalCount: s.finalCount ?? 3,
             }
           });
         } catch (err) {

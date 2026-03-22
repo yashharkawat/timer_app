@@ -51,6 +51,7 @@ model Step {
   durationMinutes Int
   instructions    String?
   sortOrder       Int     @default(0)
+  sets            Int     @default(1)
 }
 
 model SessionLog {
@@ -84,6 +85,9 @@ model UserSettings {
   theme          String  @default("light")
   keepScreenOn   Boolean @default(true)
   notifTimezone  Int     @default(0)
+  prepareSeconds Int     @default(5)
+  skipLastRest   Boolean @default(false)
+  finalCount     Int     @default(3)
 }
 
 model PushSubscription {

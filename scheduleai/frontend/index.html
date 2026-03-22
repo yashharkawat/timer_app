@@ -14,10 +14,12 @@
     <script>
       try {
         var s = JSON.parse(localStorage.getItem('scheduleai-storage') || '{}');
-        var theme = s.state?.settings?.theme ?? 'dark';
-        if (theme === 'dark') document.documentElement.classList.add('dark');
+        var theme = s.state?.settings?.theme ?? 'auto';
+        if (theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        }
       } catch(e) {
-        document.documentElement.classList.add('dark');
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.classList.add('dark');
       }
     </script>
   </head>

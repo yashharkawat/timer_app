@@ -27,6 +27,7 @@ router.put('/', requireAuth, async (req, res, next) => {
       notifEnabled, notifTime, notifDays, notifMessage, notifTimezone,
       voiceEnabled, voiceName, voiceRate, voicePitch, voiceAutoRead,
       soundsEnabled, soundVolume, theme, keepScreenOn,
+      prepareSeconds, skipLastRest, finalCount,
     } = req.body;
 
     const settings = await req.prisma.userSettings.upsert({
@@ -36,6 +37,9 @@ router.put('/', requireAuth, async (req, res, next) => {
         ...(notifTimezone !== undefined && { notifTimezone }),
         voiceEnabled, voiceName, voiceRate, voicePitch, voiceAutoRead,
         soundsEnabled, soundVolume, theme, keepScreenOn,
+        ...(prepareSeconds !== undefined && { prepareSeconds }),
+        ...(skipLastRest !== undefined && { skipLastRest }),
+        ...(finalCount !== undefined && { finalCount }),
       },
       create: {
         userId: req.user.id,
@@ -43,6 +47,9 @@ router.put('/', requireAuth, async (req, res, next) => {
         notifTimezone: notifTimezone ?? 0,
         voiceEnabled, voiceName, voiceRate, voicePitch, voiceAutoRead,
         soundsEnabled, soundVolume, theme, keepScreenOn,
+        prepareSeconds: prepareSeconds ?? 5,
+        skipLastRest: skipLastRest ?? false,
+        finalCount: finalCount ?? 3,
       },
     });
     res.json(settings);

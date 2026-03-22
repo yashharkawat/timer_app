@@ -321,14 +321,57 @@ export default function Settings() {
           </div>
         </Section>
 
+        <Section title="Session">
+          <Row
+            label="Prepare countdown"
+            sublabel="Seconds before each exercise starts"
+            right={
+              <div className="flex items-center gap-2">
+                <button onClick={() => saveSettings({ prepareSeconds: Math.max(0, (settings.prepareSeconds ?? 5) - 1) })} className="w-7 h-7 rounded-lg bg-[#eef2ff] dark:bg-[#1e2040] text-[#6366f1] font-bold text-sm flex items-center justify-center">−</button>
+                <span className="w-6 text-center text-sm font-semibold text-[#0f172a] dark:text-[#f1f5f9]">{settings.prepareSeconds ?? 5}</span>
+                <button onClick={() => saveSettings({ prepareSeconds: Math.min(30, (settings.prepareSeconds ?? 5) + 1) })} className="w-7 h-7 rounded-lg bg-[#eef2ff] dark:bg-[#1e2040] text-[#6366f1] font-bold text-sm flex items-center justify-center">+</button>
+              </div>
+            }
+          />
+          <Row
+            label="Final countdown beeps"
+            sublabel="Beep for last N seconds of each phase"
+            right={
+              <div className="flex items-center gap-2">
+                <button onClick={() => saveSettings({ finalCount: Math.max(0, (settings.finalCount ?? 3) - 1) })} className="w-7 h-7 rounded-lg bg-[#eef2ff] dark:bg-[#1e2040] text-[#6366f1] font-bold text-sm flex items-center justify-center">−</button>
+                <span className="w-6 text-center text-sm font-semibold text-[#0f172a] dark:text-[#f1f5f9]">{settings.finalCount ?? 3}</span>
+                <button onClick={() => saveSettings({ finalCount: Math.min(10, (settings.finalCount ?? 3) + 1) })} className="w-7 h-7 rounded-lg bg-[#eef2ff] dark:bg-[#1e2040] text-[#6366f1] font-bold text-sm flex items-center justify-center">+</button>
+              </div>
+            }
+          />
+          <Row
+            label="Skip last rest"
+            sublabel="No rest after final set of each exercise"
+            right={<Toggle value={settings.skipLastRest ?? false} onChange={v => saveSettings({ skipLastRest: v })} />}
+          />
+        </Section>
+
         <Section title="Display">
           <Row
             label="Keep screen on during sessions"
             right={<Toggle value={settings.keepScreenOn} onChange={v => saveSettings({ keepScreenOn: v })} />}
           />
           <Row
-            label="Dark mode"
-            right={<Toggle value={settings.theme === 'dark'} onChange={v => saveSettings({ theme: v ? 'dark' : 'light' })} />}
+            label="Theme"
+            sublabel="Auto follows your device setting"
+            right={
+              <div className="flex rounded-xl overflow-hidden border border-[#dde1ef] dark:border-[#1e2235] text-xs font-semibold">
+                {['auto', 'light', 'dark'].map(t => (
+                  <button
+                    key={t}
+                    onClick={() => saveSettings({ theme: t })}
+                    className={`px-3 py-1.5 capitalize transition-colors ${settings.theme === t ? 'bg-[#6366f1] text-white' : 'text-[#64748b] dark:text-[#94a3b8] hover:bg-[#eef2ff] dark:hover:bg-[#1e2040]'}`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            }
           />
         </Section>
 
