@@ -34,7 +34,9 @@ export default function Session() {
   const [doneNote, setDoneNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
+  const [showDoc, setShowDoc] = useState(false);
   const [wakeLock, setWakeLock] = useState(null);
+  const docText = localStorage.getItem('scheduleai-doc');
 
   const intervalRef = useRef(null);
   const stateRef = useRef({ stepIndex: 0, currentSet: 1, phase: 'prepare', timeLeft: prepareSeconds > 0 ? prepareSeconds : (steps[0]?.durationMinutes || 5) * 60 });
@@ -69,7 +71,12 @@ export default function Session() {
     }
   }, [steps, prepareSeconds, soundEnabled, voiceEnabled, volume, settings]);
 
-  useEffect(() => { if (steps.length > 0) initStep(0); }, []);
+  useEffect(() => {
+    if (steps.length > 0) {
+      initStep(0);
+      setTimeout(() => setRunning(true), 300);
+    }
+  }, []);
 
   const onPhaseComplete = useCallback(() => {
     const { stepIndex: si, currentSet: cs, phase: ph } = stateRef.current;
@@ -141,6 +148,7 @@ export default function Session() {
 
   const handleTap = () => {
     if (showInstructions) { setShowInstructions(false); return; }
+    if (showDoc) { setShowDoc(false); return; }
     setRunning(r => !r);
   };
 
@@ -198,8 +206,6 @@ export default function Session() {
   const config = PHASE[phase] || PHASE.work;
   const mins = String(Math.floor(timeLeft / 60)).padStart(2, '0');
   const secs = String(timeLeft % 60).padStart(2, '0');
-  const hasInstructions = phase === 'work' && step?.instructions?.trim();
-
   return (
     <div
       className="fixed inset-0 flex flex-col select-none"
@@ -216,18 +222,33 @@ export default function Session() {
         </svg>
       </button>
 
-      {/* Info button — only during WORK with instructions */}
-      {hasInstructions && (
-        <button
-          onClick={(e) => { e.stopPropagation(); setShowInstructions(v => !v); }}
-          className="absolute top-10 right-4 text-white/20 hover:text-white/50 transition-colors p-2 z-10"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-        </button>
-      )}
+      {/* Top-right buttons — info (WORK) + doc (always if doc exists) */}
+      <div className="absolute top-10 right-4 flex items-center gap-1 z-10">
+        {docText && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowDoc(v => !v); setShowInstructions(false); }}
+            className="text-white/20 hover:text-white/50 transition-colors p-2"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+          </button>
+        )}
+        {phase === 'work' && (
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowInstructions(v => !v); setShowDoc(false); }}
+            className="text-white/20 hover:text-white/50 transition-colors p-2"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </button>
+        )}
+      </div>
 
       {/* Center content */}
       <div className="flex-1 flex flex-col items-center justify-center pointer-events-none">
@@ -274,12 +295,37 @@ export default function Session() {
             <div className="w-10 h-1 bg-white/25 rounded-full mx-auto mb-5" />
             <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-1">Exercise</p>
             <p className="text-white font-bold text-xl mb-4">{step?.title}</p>
-            <p className="text-white/80 text-[15px] leading-relaxed">{step?.instructions}</p>
+            {step?.instructions?.trim()
+              ? <p className="text-white/80 text-[15px] leading-relaxed">{step.instructions}</p>
+              : <p className="text-white/40 text-[15px] italic">No instructions for this exercise.</p>
+            }
             <button
               onClick={() => setShowInstructions(false)}
               className="mt-6 w-full py-3 rounded-sm bg-white/15 active:bg-white/25 text-white font-semibold text-sm transition-colors"
             >
               Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Document sheet */}
+      {showDoc && docText && (
+        <div
+          className="absolute inset-x-0 bottom-0 z-20 max-h-[70vh] flex flex-col"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="bg-black/75 backdrop-blur-md rounded-t-2xl px-6 pt-4 pb-10 flex flex-col max-h-[70vh]">
+            <div className="w-10 h-1 bg-white/25 rounded-full mx-auto mb-5 flex-shrink-0" />
+            <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-3 flex-shrink-0">Document</p>
+            <div className="overflow-y-auto flex-1 mb-4">
+              <p className="text-white/80 text-[13px] leading-relaxed whitespace-pre-wrap">{docText}</p>
+            </div>
+            <button
+              onClick={() => setShowDoc(false)}
+              className="w-full py-3 rounded-sm bg-white/15 active:bg-white/25 text-white font-semibold text-sm transition-colors flex-shrink-0"
+            >
+              Close
             </button>
           </div>
         </div>

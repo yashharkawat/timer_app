@@ -32,6 +32,7 @@ export default function ImportSchedule() {
       if (!text || text.trim().length < 20) {
         throw new Error('Could not extract readable text from this file.');
       }
+      localStorage.setItem('scheduleai-doc', text);
 
       setStatus('analyzing');
       const schedule = await api.importScheduleFromAI(text);
