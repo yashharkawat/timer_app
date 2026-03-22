@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useStore from '../store/useStore.js';
 import { playBowl, playNewStep, playRestChime, playSessionDone, playCountdownBeep, playPrepareStart } from '../lib/sounds.js';
@@ -17,25 +17,34 @@ export default function Session() {
 
   // Quickstart mode — config stored in localStorage
   const isQuickstart = dayId === 'quickstart';
-  const qsConfig = isQuickstart ? JSON.parse(localStorage.getItem('scheduleai-quickstart') || 'null') : null;
 
+  // Memoize so steps array identity stays stable across renders (prevents timer reset loop)
+  const steps = useMemo(() => {
+    if (isQuickstart) {
+      const cfg = JSON.parse(localStorage.getItem('scheduleai-quickstart') || 'null');
+      if (!cfg) return [];
+      return [{
+        id: 'qs-1',
+        title: cfg.title || 'Exercise',
+        durationMinutes: (cfg.workMinutes || 5) + (cfg.workSeconds || 0) / 60,
+        sets: cfg.sets || 1,
+        instructions: '',
+      }];
+    }
+    return (schedules?.length > 0
+      ? schedules.flatMap(s => s.days || [])
+      : schedule?.days || []
+    ).find(d => d.id === dayId)?.steps || [];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayId]); // dayId never changes during a session — intentionally stable
+
+  const qsConfig = isQuickstart ? JSON.parse(localStorage.getItem('scheduleai-quickstart') || 'null') : null;
   const day = isQuickstart
-    ? (qsConfig ? {
-        id: 'quickstart',
-        name: 'Quick Start',
-        steps: [{
-          id: 'qs-1',
-          title: qsConfig.title || 'Exercise',
-          durationMinutes: (qsConfig.workMinutes || 5) + (qsConfig.workSeconds || 0) / 60,
-          sets: qsConfig.sets || 1,
-          instructions: '',
-        }],
-      } : null)
+    ? (qsConfig ? { id: 'quickstart', name: 'Quick Start', steps } : null)
     : (schedules?.length > 0
         ? schedules.flatMap(s => s.days || [])
         : schedule?.days || []
       ).find(d => d.id === dayId);
-  const steps = day?.steps || [];
 
   const restSeconds = isQuickstart ? (qsConfig?.restSeconds ?? 30) : (schedule?.restSeconds ?? 30);
   const prepareSeconds = settings.prepareSeconds ?? 5;
@@ -283,7 +292,7 @@ export default function Session() {
           className="text-white font-light tabular-nums leading-none"
           style={{ fontSize: 'clamp(5.5rem, 26vw, 14rem)', letterSpacing: '-0.02em' }}
         >
-          {mins}<span style={{ fontSize: '60%', verticalAlign: 'middle', margin: '0 0.04em' }}>·</span>{secs}
+          {mins}<span style={{ verticalAlign: 'middle', margin: '0 0.02em', lineHeight: 1 }}>:</span>{secs}
         </p>
 
         {/* Phase label — huge, faded, same color family */}
