@@ -5,9 +5,9 @@ import { playBowl, playNewStep, playRestChime, playSessionDone, playCountdownBee
 import { speak, stop as stopSpeech } from '../lib/tts.js';
 
 const PHASE = {
-  prepare: { label: 'PREPARE', bg: '#b84a0a' },
-  work:    { label: 'WORK',    bg: '#1a6b3a' },
-  rest:    { label: 'REST',    bg: '#1455a6' },
+  prepare: { label: 'GET READY', bg: '#c05000' },
+  work:    { label: 'WORK',      bg: '#1a7a40' },
+  rest:    { label: 'REST',      bg: '#1060b0' },
 };
 
 export default function Session() {
@@ -20,7 +20,6 @@ export default function Session() {
 
   const restSeconds = schedule?.restSeconds ?? 30;
   const prepareSeconds = settings.prepareSeconds ?? 5;
-  const skipLastRest = settings.skipLastRest ?? false;
   const finalCount = settings.finalCount ?? 3;
   const soundEnabled = settings.soundsEnabled;
   const voiceEnabled = settings.voiceEnabled;
@@ -34,12 +33,12 @@ export default function Session() {
   const [showDone, setShowDone] = useState(false);
   const [doneNote, setDoneNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
   const [wakeLock, setWakeLock] = useState(null);
 
   const intervalRef = useRef(null);
   const stateRef = useRef({ stepIndex: 0, currentSet: 1, phase: 'prepare', timeLeft: prepareSeconds > 0 ? prepareSeconds : (steps[0]?.durationMinutes || 5) * 60 });
 
-  // Keep ref in sync
   useEffect(() => {
     stateRef.current = { stepIndex, currentSet, phase, timeLeft };
   }, [stepIndex, currentSet, phase, timeLeft]);
@@ -57,38 +56,34 @@ export default function Session() {
     try { wakeLock?.release(); } catch {}
   };
 
-  // Initialize a step
-  const initStep = useCallback((idx, set = 1, ph = null) => {
+  const initStep = useCallback((idx, set = 1) => {
     const s = steps[idx];
     if (!s) return;
-    const startPhase = ph || (prepareSeconds > 0 ? 'prepare' : 'work');
+    const startPhase = prepareSeconds > 0 ? 'prepare' : 'work';
     const startTime = startPhase === 'prepare' ? prepareSeconds : s.durationMinutes * 60;
     setStepIndex(idx);
     setCurrentSet(set);
     setPhase(startPhase);
     setTimeLeft(startTime);
+    setShowInstructions(false);
     if (startPhase === 'prepare' && soundEnabled) playPrepareStart(volume);
     if (startPhase === 'work' && voiceEnabled && s.instructions) {
       setTimeout(() => speak(`${s.title}. ${s.instructions}`, { rate: settings.voiceRate, pitch: settings.voicePitch, voiceName: settings.voiceName }), 500);
     }
   }, [steps, prepareSeconds, soundEnabled, voiceEnabled, volume, settings]);
 
-  // Init on mount
   useEffect(() => {
     if (steps.length > 0) initStep(0);
   }, []);
 
-  // Transition when a phase ends
   const onPhaseComplete = useCallback(() => {
     const { stepIndex: si, currentSet: cs, phase: ph } = stateRef.current;
     const step = steps[si];
     if (!step) return;
     const totalSets = step.sets || 1;
-
     stopSpeech();
 
     if (ph === 'prepare') {
-      // Start work
       if (soundEnabled) playNewStep(volume);
       if (voiceEnabled && step.instructions) {
         setTimeout(() => speak(`${step.title}. ${step.instructions}`, { rate: settings.voiceRate, pitch: settings.voicePitch, voiceName: settings.voiceName }), 300);
@@ -100,12 +95,10 @@ export default function Session() {
       if (soundEnabled) playBowl(volume);
       const isLastSet = cs >= totalSets;
       if (isLastSet) {
-        // Move to next exercise or finish
         const nextIdx = si + 1;
         if (nextIdx < steps.length) {
           setTimeout(() => initStep(nextIdx), 800);
         } else {
-          // Done
           setTimeout(() => {
             if (soundEnabled) playSessionDone(volume);
             releaseWakeLock();
@@ -114,14 +107,12 @@ export default function Session() {
           }, 800);
         }
       } else {
-        // More sets: go to rest
         if (soundEnabled) playRestChime(volume);
         setPhase('rest');
         setTimeLeft(restSeconds);
       }
 
     } else if (ph === 'rest') {
-      // Next set
       const nextSet = cs + 1;
       setCurrentSet(nextSet);
       setPhase('work');
@@ -133,16 +124,12 @@ export default function Session() {
     }
   }, [steps, soundEnabled, voiceEnabled, volume, restSeconds, settings, initStep]);
 
-  // Interval tick
   useEffect(() => {
     if (running) {
       intervalRef.current = setInterval(() => {
         setTimeLeft(t => {
           const next = t - 1;
-          // Final count beeps
-          if (next <= finalCount && next > 0 && soundEnabled) {
-            playCountdownBeep(volume);
-          }
+          if (next <= finalCount && next > 0 && soundEnabled) playCountdownBeep(volume);
           if (next <= 0) {
             clearInterval(intervalRef.current);
             onPhaseComplete();
@@ -161,7 +148,10 @@ export default function Session() {
 
   useEffect(() => () => { clearInterval(intervalRef.current); stopSpeech(); releaseWakeLock(); }, []);
 
-  const toggleRunning = () => setRunning(r => !r);
+  const toggleRunning = () => {
+    if (showInstructions) { setShowInstructions(false); return; }
+    setRunning(r => !r);
+  };
 
   const skipPhase = (e) => {
     e?.stopPropagation();
@@ -176,8 +166,7 @@ export default function Session() {
     clearInterval(intervalRef.current);
     stopSpeech();
     setRunning(false);
-    const prev = Math.max(0, stepIndex - 1);
-    initStep(prev);
+    initStep(Math.max(0, stepIndex - 1));
     setTimeout(() => setRunning(true), 100);
   };
 
@@ -195,14 +184,6 @@ export default function Session() {
     );
   }
 
-  const step = steps[stepIndex];
-  const totalSets = step?.sets || 1;
-  const config = PHASE[phase] || PHASE.work;
-  const mins = String(Math.floor(timeLeft / 60)).padStart(2, '0');
-  const secs = String(timeLeft % 60).padStart(2, '0');
-  const progressPct = ((stepIndex + (phase === 'prepare' ? 0 : currentSet / totalSets)) / steps.length) * 100;
-
-  // Done screen
   if (showDone) {
     return (
       <div className="min-h-screen bg-[#f0f2ff] dark:bg-[#0c0e16] flex flex-col">
@@ -212,8 +193,10 @@ export default function Session() {
               <polyline points="20 6 9 17 4 12"/>
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-[#0f172a] dark:text-[#f1f5f9] mb-2">Session complete</h2>
-          <p className="text-[#64748b] dark:text-[#94a3b8] mb-8">{day.name} — {steps.reduce((a, s) => a + s.durationMinutes * (s.sets || 1), 0)} min total</p>
+          <h2 className="text-2xl font-bold text-[#0f172a] dark:text-[#f1f5f9] mb-2">Session complete!</h2>
+          <p className="text-[#64748b] dark:text-[#94a3b8] mb-8">
+            {day.name} · {steps.reduce((a, s) => a + s.durationMinutes * (s.sets || 1), 0)} min
+          </p>
           <textarea
             className="w-full border border-[#dde1ef] dark:border-[#1e2235] rounded-xl px-4 py-3 text-sm mb-5 bg-white dark:bg-[#131720] text-[#0f172a] dark:text-[#f1f5f9] placeholder-[#94a3b8] resize-none focus:outline-none focus:border-[#6366f1]"
             rows={3}
@@ -224,7 +207,7 @@ export default function Session() {
           <button
             onClick={handleSaveFinish}
             disabled={saving}
-            className="w-full py-3.5 bg-[#6366f1] hover:bg-[#4f46e5] text-white rounded-xl font-semibold text-base disabled:opacity-50 active:scale-[0.98] transition-all shadow-sm"
+            className="w-full py-3.5 bg-[#6366f1] hover:bg-[#4f46e5] text-white rounded-xl font-semibold text-base disabled:opacity-50 active:scale-[0.98] transition-all"
           >
             {saving ? 'Saving...' : 'Save & finish'}
           </button>
@@ -233,114 +216,195 @@ export default function Session() {
     );
   }
 
+  const step = steps[stepIndex];
+  const totalSets = step?.sets || 1;
+  const config = PHASE[phase] || PHASE.work;
+  const mins = String(Math.floor(timeLeft / 60)).padStart(2, '0');
+  const secs = String(timeLeft % 60).padStart(2, '0');
+  const hasInstructions = step?.instructions?.trim();
+
+  // Progress: fraction of exercises done
+  const progressPct = (stepIndex / steps.length) * 100;
+
   return (
     <div
-      className="fixed inset-0 flex flex-col items-center justify-center select-none transition-colors duration-500"
+      className="fixed inset-0 flex flex-col select-none transition-colors duration-500"
       style={{ backgroundColor: config.bg }}
       onClick={toggleRunning}
     >
-      {/* Top progress bar */}
-      <div className="absolute top-0 left-0 right-0 h-1 bg-white/10">
-        <div className="h-full bg-white/50 transition-all duration-500" style={{ width: `${progressPct}%` }} />
+      {/* Thin progress bar at very top */}
+      <div className="absolute top-0 left-0 right-0 h-0.5 bg-white/10">
+        <div
+          className="h-full bg-white/40 transition-all duration-700"
+          style={{ width: `${progressPct}%` }}
+        />
       </div>
 
-      {/* Back button */}
-      <button
-        onClick={(e) => { e.stopPropagation(); stopSpeech(); clearInterval(intervalRef.current); navigate('/'); }}
-        className="absolute top-8 left-5 flex items-center gap-1.5 text-white/70 hover:text-white text-sm font-medium transition-colors"
+      {/* Top bar */}
+      <div
+        className="flex items-center justify-between px-5 pt-14 pb-0"
+        onClick={e => e.stopPropagation()}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="15 18 9 12 15 6"/>
-        </svg>
-        Exit
-      </button>
+        {/* Close */}
+        <button
+          onClick={() => { stopSpeech(); clearInterval(intervalRef.current); navigate('/'); }}
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20 transition-colors"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
 
-      {/* Exercise name */}
-      <p className="absolute top-8 left-0 right-0 text-center text-white/70 text-xs font-bold uppercase tracking-[0.2em] px-20">
-        {step?.title || 'Exercise'}
-      </p>
+        {/* Exercise position */}
+        <p className="text-white/50 text-xs font-bold tracking-widest uppercase">
+          {stepIndex + 1} / {steps.length}
+        </p>
 
-      {/* Content */}
-      <div className="flex flex-col items-center pointer-events-none">
-        {/* Set number */}
+        {/* Info button — only during work with instructions */}
+        {hasInstructions ? (
+          <button
+            onClick={() => setShowInstructions(v => !v)}
+            className={`w-9 h-9 flex items-center justify-center rounded-full transition-colors ${showInstructions ? 'bg-white/30' : 'bg-white/10 active:bg-white/20'}`}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          </button>
+        ) : (
+          <div className="w-9" />
+        )}
+      </div>
+
+      {/* Center content */}
+      <div className="flex-1 flex flex-col items-center justify-center pointer-events-none px-6">
+
+        {/* Phase label */}
+        <p
+          className="text-white font-black uppercase tracking-[0.18em] mb-2"
+          style={{ fontSize: 'clamp(1.3rem, 6vw, 2.5rem)' }}
+        >
+          {config.label}
+        </p>
+
+        {/* Set info */}
         {totalSets > 1 && (
-          <p className="text-white/50 font-bold mb-2" style={{ fontSize: 'clamp(2.5rem, 10vw, 5rem)', lineHeight: 1 }}>
-            {currentSet}
+          <p
+            className="text-white/55 font-bold tracking-widest uppercase mb-3"
+            style={{ fontSize: 'clamp(0.75rem, 3vw, 1.1rem)' }}
+          >
+            SET {currentSet} / {totalSets}
           </p>
         )}
 
-        {/* Big countdown */}
-        <p className="text-white font-black tabular-nums" style={{ fontSize: 'clamp(5rem, 22vw, 11rem)', lineHeight: 1, letterSpacing: '-0.03em' }}>
+        {/* Countdown */}
+        <p
+          className="text-white font-black tabular-nums leading-none"
+          style={{ fontSize: 'clamp(5.5rem, 26vw, 13rem)', letterSpacing: '-0.04em' }}
+        >
           {mins}:{secs}
         </p>
 
-        {/* Phase label */}
-        <p className="font-black uppercase tracking-[0.12em] mt-3" style={{ fontSize: 'clamp(2rem, 9vw, 5rem)', color: 'rgba(255,255,255,0.18)', lineHeight: 1 }}>
-          {config.label}
+        {/* Exercise name */}
+        <p
+          className="text-white/65 font-semibold mt-6 text-center"
+          style={{ fontSize: 'clamp(0.95rem, 4vw, 1.4rem)' }}
+        >
+          {step?.title || 'Exercise'}
         </p>
+
+        {/* Tap hint when paused */}
+        {!running && (
+          <p className="text-white/35 text-xs font-semibold tracking-widest uppercase mt-4">
+            TAP TO {timeLeft === (prepareSeconds > 0 ? prepareSeconds : (step?.durationMinutes || 5) * 60) && !running ? 'START' : 'RESUME'}
+          </p>
+        )}
       </div>
+
+      {/* Instructions sheet */}
+      {showInstructions && (
+        <div
+          className="absolute inset-x-0 bottom-0 z-20"
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="bg-black/75 backdrop-blur-md rounded-t-3xl px-6 pt-4 pb-10">
+            <div className="w-10 h-1 bg-white/25 rounded-full mx-auto mb-5" />
+            <p className="text-white/45 text-xs font-bold uppercase tracking-widest mb-2">{step?.title}</p>
+            <p className="text-white/90 text-[15px] leading-relaxed">{step?.instructions}</p>
+            <button
+              onClick={() => setShowInstructions(false)}
+              className="mt-6 w-full py-3 rounded-2xl bg-white/15 active:bg-white/25 text-white font-semibold text-sm transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Bottom controls */}
-      <div
-        className="absolute bottom-10 flex items-center gap-10"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Prev */}
-        <button
-          onClick={prevExercise}
-          className="w-12 h-12 rounded-full bg-white/10 active:bg-white/20 flex items-center justify-center transition-colors"
+      {!showInstructions && (
+        <div
+          className="flex flex-col items-center pb-14 gap-5"
+          onClick={e => e.stopPropagation()}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
-        </button>
+          {/* Dot indicators */}
+          <div className="flex gap-2 items-center">
+            {steps.map((_, i) => (
+              <div
+                key={i}
+                className="rounded-full transition-all duration-300"
+                style={{
+                  width: i === stepIndex ? '20px' : '6px',
+                  height: '6px',
+                  backgroundColor: i < stepIndex
+                    ? 'rgba(255,255,255,0.45)'
+                    : i === stepIndex
+                    ? 'rgba(255,255,255,0.95)'
+                    : 'rgba(255,255,255,0.18)',
+                }}
+              />
+            ))}
+          </div>
 
-        {/* Play/Pause */}
-        <button
-          onClick={toggleRunning}
-          className="w-16 h-16 rounded-full bg-white/20 active:bg-white/30 flex items-center justify-center transition-colors"
-        >
-          {running ? (
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-              <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
-            </svg>
-          ) : (
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
-          )}
-        </button>
+          {/* Buttons */}
+          <div className="flex items-center gap-8">
+            {/* Prev */}
+            <button
+              onClick={prevExercise}
+              className="w-14 h-14 rounded-full bg-white/10 active:bg-white/25 flex items-center justify-center transition-colors"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+            </button>
 
-        {/* Next / skip phase */}
-        <button
-          onClick={skipPhase}
-          className="w-12 h-12 rounded-full bg-white/10 active:bg-white/20 flex items-center justify-center transition-colors"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="9 18 15 12 9 6"/>
-          </svg>
-        </button>
-      </div>
+            {/* Play/Pause */}
+            <button
+              onClick={toggleRunning}
+              className="w-20 h-20 rounded-full bg-white/20 active:bg-white/35 flex items-center justify-center transition-colors"
+            >
+              {running ? (
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="white">
+                  <rect x="5" y="4" width="4" height="16" rx="1.5"/>
+                  <rect x="15" y="4" width="4" height="16" rx="1.5"/>
+                </svg>
+              ) : (
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="white" style={{ marginLeft: '3px' }}>
+                  <polygon points="6 3 20 12 6 21 6 3"/>
+                </svg>
+              )}
+            </button>
 
-      {/* Exercise list indicator (dots) */}
-      <div className="absolute bottom-28 flex gap-1.5">
-        {steps.map((_, i) => (
-          <div
-            key={i}
-            className="rounded-full transition-all"
-            style={{
-              width: i === stepIndex ? '16px' : '6px',
-              height: '6px',
-              backgroundColor: i === stepIndex ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.3)',
-            }}
-          />
-        ))}
-      </div>
-
-      {/* Pause overlay */}
-      {!running && (
-        <div className="absolute inset-0 bg-black/20 flex items-center justify-center pointer-events-none">
-          <p className="text-white/80 text-lg font-semibold tracking-wider uppercase">Paused — tap to resume</p>
+            {/* Skip */}
+            <button
+              onClick={skipPhase}
+              className="w-14 h-14 rounded-full bg-white/10 active:bg-white/25 flex items-center justify-center transition-colors"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
+          </div>
         </div>
       )}
     </div>
