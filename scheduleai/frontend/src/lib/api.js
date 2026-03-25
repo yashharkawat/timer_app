@@ -11,6 +11,12 @@ async function req(method, path, body) {
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401) {
+    localStorage.removeItem('g-token');
+    localStorage.removeItem('g-user');
+    window.location.href = '/sign-in';
+    return;
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || `HTTP ${res.status}`);
