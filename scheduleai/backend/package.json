@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "build": "prisma generate && prisma db push --accept-data-loss",
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "db:generate": "prisma generate",
